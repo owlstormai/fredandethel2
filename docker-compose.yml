@@ -1,0 +1,21 @@
+# Local Postgres for Companion. Optional: any Postgres 15+ works.
+#   docker compose up -d
+#   DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/companion
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: companion
+    ports:
+      - "5432:5432"
+    volumes:
+      - companion-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  companion-pg:
