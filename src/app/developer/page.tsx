@@ -3,7 +3,7 @@
  * Server component: auth-gated; the panels fetch their own JSON client-side.
  */
 // TODO(integration): switch to "@/components/layout/AppShell" (Agent A) and delete the stub.
-import { AppShell } from "@/components/_stubs/AppShell";
+import { AppShell } from "@/components/layout/AppShell";
 import { DeveloperPanel } from "@/components/developer/DeveloperPanel";
 import { requirePageUser } from "@/lib/auth/session";
 

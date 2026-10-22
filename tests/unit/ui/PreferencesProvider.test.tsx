@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { useEffect } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MeResponse } from "@/lib/api/contracts";
 import { DEFAULT_PREFERENCES } from "@/lib/types";
@@ -25,7 +26,9 @@ function jsonResponse(status: number, body: unknown) {
 let latest: ReturnType<typeof usePreferences> | null = null;
 function Probe() {
   const value = usePreferences();
-  latest = value;
+  useEffect(() => {
+    latest = value;
+  });
   return (
     <div>
       <span data-testid="loading">{String(value.loading)}</span>

@@ -45,9 +45,11 @@ export function LandingPage({ voices }: LandingPageProps) {
                 <Link href="/login" className="flex min-h-12 items-center rounded-full px-4 text-[1rem] font-medium text-muted hover:bg-surface-2 hover:text-foreground">
                   Sign in
                 </Link>
-                <LinkButton href={signupHref} variant="secondary" className="hidden sm:inline-flex">
-                  Create account
-                </LinkButton>
+                <span className="hidden sm:block">
+                  <LinkButton href={signupHref} variant="secondary">
+                    Create account
+                  </LinkButton>
+                </span>
               </>
             )}
           </nav>

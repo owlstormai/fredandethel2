@@ -266,13 +266,17 @@ export async function buildMemoryContext(
   options: { maxTokens?: number; continueConversationId?: string; recentQuery?: string },
 ): Promise<MemoryContext> {
   const maxTokens = Math.max(50, options.maxTokens ?? 1200);
-  const empty: MemoryContext = { block: "", memoryIds: [], summaryIds: [], estimatedTokens: 0 };
-  if (!(await isMemoryEnabled(userId))) return empty;
+  // Memory consent gates stored facts and summaries. The transcript of the
+  // conversation being continued (model switch / reconnect) is NOT memory — it
+  // is the live conversation the user is having — so it is rehydrated regardless.
+  const memoryOn = await isMemoryEnabled(userId);
 
-  const sensitiveOk = await isSensitiveMemoryEnabled(userId);
-  const facts = (await listMemories(userId, { statuses: ["confirmed", "reported"], excludeKinds: ["summary"] })).filter(
-    (m) => sensitiveOk || m.sensitivity !== "sensitive",
-  );
+  const sensitiveOk = memoryOn && (await isSensitiveMemoryEnabled(userId));
+  const facts = memoryOn
+    ? (await listMemories(userId, { statuses: ["confirmed", "reported"], excludeKinds: ["summary"] })).filter(
+        (m) => sensitiveOk || m.sensitivity !== "sensitive",
+      )
+    : [];
   const ranked = rankMemories(facts, "", facts.length);
   if (options.recentQuery) {
     // Blend in query relevance without excluding unrelated facts entirely.
@@ -289,7 +293,7 @@ export async function buildMemoryContext(
     id: r.memory.id,
   }));
 
-  const summaries = await listRecentSummaries(userId, 3);
+  const summaries = memoryOn ? await listRecentSummaries(userId, 3) : [];
   summaries.forEach((s, index) => {
     items.push({ tier: 3, score: -index, section: "summary", text: `- ${trimLine(s.content, 600)}`, id: s.id });
   });

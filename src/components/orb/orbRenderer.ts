@@ -310,11 +310,14 @@ export class OrbRenderer {
     // --- sphere body ------------------------------------------------------------------------
     ctx.globalCompositeOperation = "source-over";
     {
+      // Always opaque: brightness shifts the colour mix, never the alpha, so the
+      // page background can never show through a dim sphere.
+      const b = Math.min(1, bright);
       const body = ctx.createRadialGradient(cx - r * 0.3, cy - r * 0.32, r * 0.05, cx, cy, r * 1.02);
-      body.addColorStop(0, rgba(pal.core, 0.96 * Math.min(1, bright + 0.15)));
-      body.addColorStop(0.28, rgba(mixRgb(pal.core, pal.inner, 0.55), 0.95));
-      body.addColorStop(0.7, rgba(pal.inner, 0.92));
-      body.addColorStop(1, rgba(pal.outer, 0.96));
+      body.addColorStop(0, rgba(mixRgb(pal.inner, pal.core, 0.35 + 0.65 * b), 1));
+      body.addColorStop(0.28, rgba(mixRgb(pal.inner, pal.core, 0.45 * b), 1));
+      body.addColorStop(0.7, rgba(mixRgb(pal.outer, pal.inner, 0.55 + 0.4 * b), 1));
+      body.addColorStop(1, rgba(pal.outer, 1));
       ctx.fillStyle = body;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, TAU);

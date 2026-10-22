@@ -8,13 +8,14 @@
  */
 import { jsonError } from "@/lib/api/respond";
 
-export type RateLimitGroup = "auth" | "demoTurn" | "memories" | "events" | "default";
+export type RateLimitGroup = "auth" | "demoTurn" | "memories" | "tools" | "events" | "default";
 
 /** Requests allowed per minute, per key. */
 export const RATE_LIMITS: Record<RateLimitGroup, number> = {
   auth: 10,
   demoTurn: 60,
   memories: 60,
+  tools: 60,
   events: 120,
   default: 120,
 };

@@ -12,7 +12,7 @@ import { PasswordInput } from "./PasswordInput";
 
 type FieldErrors = Partial<Record<"email" | "password", string>>;
 
-export function LoginForm() {
+export function LoginForm({ redirectTo }: { redirectTo?: string } = {}) {
   const router = useRouter();
   const { refresh } = usePreferences();
   const [email, setEmail] = useState("");
@@ -40,7 +40,7 @@ export function LoginForm() {
     try {
       await apiFetch<AuthResponse>("/api/auth/login", { method: "POST", json: parsed.data });
       await refresh();
-      router.push("/talk");
+      router.push(redirectTo ?? "/talk");
     } catch (err) {
       setFormError(describeAuthError(err, "login"));
       setSubmitting(false);

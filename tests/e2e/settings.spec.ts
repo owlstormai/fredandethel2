@@ -12,7 +12,10 @@ test("settings persist and theme attributes apply", async ({ page }) => {
   await expect.poll(async () => page.evaluate(() => document.documentElement.dataset.textScale)).toBe("xlarge");
 
   await page.reload();
-  await expect(page.getByTestId("pref-humor-playful")).toHaveAttribute(/aria-pressed|aria-checked|data-selected/, /true/);
+  const selected = await page.getByTestId("pref-humor-playful").evaluate((el) =>
+    el.getAttribute("aria-pressed") === "true" || el.getAttribute("aria-checked") === "true" || el.getAttribute("data-selected") === "true",
+  );
+  expect(selected).toBeTruthy();
   const me = await (await page.request.get("/api/me")).json();
   expect(me.preferences.humorLevel).toBe("playful");
   expect(me.preferences.orbColor).toBe("violet");

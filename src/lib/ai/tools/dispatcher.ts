@@ -164,7 +164,7 @@ export async function dispatchTool(user: User, input: ToolDispatchInput): Promis
   // 60 tool calls / minute / user. Uses the shared limiter's 60/min "memories"
   // group under a "tools:" key so it cannot collide with the memory routes.
   // TODO(integration): switch to a dedicated "tools" group if Agent C adds one to RATE_LIMITS.
-  const limit = checkRateLimit("memories", `tools:${user.id}`);
+  const limit = checkRateLimit("tools", user.id);
   if (!limit.allowed) {
     throw new HttpError(429, "rate_limited", "Too many tool calls. Slow down a little.", { retryAfterSeconds: limit.retryAfterSeconds });
   }

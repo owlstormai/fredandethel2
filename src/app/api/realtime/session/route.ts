@@ -70,7 +70,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     memoryEnabled: preferences.memoryEnabled,
     sensitiveMemoryEnabled: preferences.sensitiveMemoryEnabled,
     searchEnabled,
-    memoryBlock: preferences.memoryEnabled ? memory.block : "",
+    memoryBlock: memory.block, // service applies consent gating; transcript continuation is always included
     mode: "live",
     now: new Date(),
     timezone: profile.timezone,

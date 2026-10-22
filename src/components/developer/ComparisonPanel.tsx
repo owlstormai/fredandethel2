@@ -1,7 +1,7 @@
 "use client";
 /** Side-by-side model comparison plus a plain explanation of what switching does and does not carry over. */
 // TODO(integration): switch to "@/components/voice/ComparisonSession" (Agent B) and delete the stub.
-import { ComparisonSession } from "@/components/_stubs/ComparisonSession";
+import { ComparisonSession } from "@/components/voice/ComparisonSession";
 import { DevCard } from "./primitives";
 
 export function ComparisonPanel() {
