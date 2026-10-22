@@ -18,7 +18,9 @@
     "test:integration": "vitest run tests/integration",
     "test:e2e": "playwright test",
     "test:all": "npm run typecheck && npm run lint && npm run test && npm run test:e2e",
-    "verify": "tsx scripts/verify.ts"
+    "verify": "tsx scripts/verify.ts",
+    "check:secrets": "bash scripts/check-secrets.sh",
+    "fixtures:audio": "python3 -I tests/fixtures/make-fake-mic.py tests/fixtures/fake-mic.wav"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
