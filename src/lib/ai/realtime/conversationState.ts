@@ -316,16 +316,23 @@ export function conversationReducer(state: ConversationState, action: Conversati
       return withOrb(finishAssistantSpeech(base, now, action.durationMs));
 
     case "response_done": {
+      const isCurrent = base.currentResponseId === null || base.currentResponseId === action.responseId;
       const next: ConversationState = {
         ...base,
         responses: base.responses + 1,
         usage: addUsage(base.usage, action.usage),
         currentResponseId: base.currentResponseId === action.responseId ? null : base.currentResponseId,
-        responseStartedAt: null,
+        responseStartedAt: isCurrent ? null : base.responseStartedAt,
       };
-      // Keep "thinking" while a tool is still running (its follow-up response is coming).
-      if (!base.assistantSpeaking && base.activeTool === null) next.awaitingResponse = false;
-      if (action.status === "cancelled" || action.status === "failed") next.awaitingResponse = base.activeTool !== null;
+      // A stale `done` (e.g. the cancelled response after a barge-in) must not clear
+      // "thinking" for the turn the user has since finished.
+      if (isCurrent && !base.interruptedAt) {
+        // Keep "thinking" while a tool is still running (its follow-up response is coming).
+        if (!base.assistantSpeaking && base.activeTool === null) next.awaitingResponse = false;
+        if (action.status === "cancelled" || action.status === "failed") next.awaitingResponse = base.activeTool !== null;
+      } else if (isCurrent && base.interruptedAt && base.currentResponseId === null && !base.userSpeaking && !base.awaitingResponse) {
+        next.awaitingResponse = false;
+      }
       return withOrb(next);
     }
 
@@ -336,6 +343,9 @@ export function conversationReducer(state: ConversationState, action: Conversati
         interruptions: base.interruptions + 1,
         awaitingResponse: false,
         activeTool: null,
+        // The cancelled response is no longer "current"; its `done` is informational only.
+        currentResponseId: null,
+        responseStartedAt: null,
       });
 
     case "transcript": {

@@ -97,7 +97,9 @@ export function useConversation(options: UseConversationOptions): UseConversatio
   const [switchNote, setSwitchNote] = useState<string | null>(null);
 
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+  useEffect(() => {
+    optionsRef.current = options;
+  });
   const now = useCallback(() => optionsRef.current.now?.() ?? Date.now(), []);
 
   const adapterRef = useRef<ConversationAdapter | null>(null);
@@ -108,7 +110,7 @@ export function useConversation(options: UseConversationOptions): UseConversatio
   const modelKeyRef = useRef<ModelKey>(options.modelKey);
   const conversationIdRef = useRef<string | null>(null);
   const telemetryRef = useRef<TelemetryBatcher | null>(null);
-  const mapperRef = useRef(createTelemetryMapper(now));
+  const mapperRef = useRef<ReturnType<typeof createTelemetryMapper> | null>(null);
   const startingRef = useRef(false);
   const endingRef = useRef<Promise<EndConversationResponse | null> | null>(null);
   const switchingRef = useRef(false);
@@ -116,7 +118,9 @@ export function useConversation(options: UseConversationOptions): UseConversatio
   const pendingEndTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const assistantSpeakingRef = useRef(false);
   const stateRef = useRef(state);
-  stateRef.current = state;
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const dispatchAt = useCallback(
     (event: AdapterEvent | { type: "mic"; status: "idle" | "requesting" | "granted" | "denied" | "skipped"; error?: MicError | null }) => {
@@ -192,8 +196,11 @@ export function useConversation(options: UseConversationOptions): UseConversatio
             /* ignore */
           }
         }
+        const hadConversation = Boolean(conversationIdRef.current);
         if (wasActive && stateRef.current.connection !== "ended") dispatchAt({ type: "ended", reason });
         const result = await finalizeEnd(reason);
+        // Nothing was ever started (End pressed while asking for the mic / connecting): back to idle, no summary.
+        if (!hadConversation) dispatch({ type: "reset", at: now() });
         return result;
       })().finally(() => {
         endingRef.current = null;
@@ -202,15 +209,20 @@ export function useConversation(options: UseConversationOptions): UseConversatio
       endingRef.current = run;
       return run;
     },
-    [dispatchAt, finalizeEnd],
+    [dispatchAt, finalizeEnd, now],
   );
 
   // --- adapter event handling ----------------------------------------------------
   const handleAdapterEvent = useCallback(
     (event: AdapterEvent) => {
+      // During a model switch the old adapter's `ended` is an implementation detail: a new session follows.
+      if (event.type === "ended" && switchingRef.current) return;
       dispatchAt(event);
       const telemetry = telemetryRef.current;
-      if (telemetry) telemetry.pushAll(mapperRef.current(event));
+      if (telemetry) {
+        mapperRef.current ??= createTelemetryMapper(now);
+        telemetry.pushAll(mapperRef.current(event));
+      }
 
       switch (event.type) {
         case "session": {
@@ -254,14 +266,13 @@ export function useConversation(options: UseConversationOptions): UseConversatio
           break;
         }
         case "ended":
-          if (switchingRef.current) break; // model switch: a new session follows
           if (!endingRef.current) void end(event.reason);
           break;
         default:
           break;
       }
     },
-    [dispatchAt, end, rotateTelemetry],
+    [dispatchAt, end, rotateTelemetry, now],
   );
 
   // --- connect ---------------------------------------------------------------------

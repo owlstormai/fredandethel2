@@ -204,28 +204,28 @@ export class TelemetryBatcher {
     if (seconds >= 1) this.push({ type: "connected", seconds: Math.min(7200, Math.round(seconds)) });
   }
 
-  /** Send everything queued (sequential; failures are re-queued, bounded). */
-  async flush(): Promise<void> {
-    if (this.inFlight) {
-      await this.inFlight;
-    }
-    if (this.queue.length === 0) return;
-    const batch = this.queue.splice(0, MAX_BATCH);
-    const run = this.post(this.conversationId, batch)
-      .then(() => {
-        this.failures = 0;
-      })
-      .catch(() => {
-        this.failures += 1;
-        // Give up after repeated failures so we never grow unbounded.
-        if (this.failures <= 5) this.queue.unshift(...batch);
-      })
-      .finally(() => {
-        this.inFlight = null;
-      });
+  /** Send everything queued, 200 at a time (sequential; failures are re-queued, bounded). */
+  flush(): Promise<void> {
+    if (this.inFlight) return this.inFlight;
+    if (this.queue.length === 0) return Promise.resolve();
+    const run = (async () => {
+      while (this.queue.length > 0) {
+        const batch = this.queue.splice(0, MAX_BATCH);
+        try {
+          await this.post(this.conversationId, batch);
+          this.failures = 0;
+        } catch {
+          this.failures += 1;
+          // Give up after repeated failures so the queue never grows unbounded.
+          if (this.failures <= 5) this.queue.unshift(...batch);
+          break;
+        }
+      }
+    })().finally(() => {
+      this.inFlight = null;
+    });
     this.inFlight = run;
-    await run;
-    if (this.queue.length >= MAX_BATCH) await this.flush();
+    return run;
   }
 
   /** Synchronous best-effort send for pagehide/unload. */

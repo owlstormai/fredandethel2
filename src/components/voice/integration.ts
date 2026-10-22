@@ -1,17 +1,12 @@
 "use client";
 /**
- * Single seam between the voice components and the rest of the app.
- *
- * TODO(integration): the three lines marked STUB point at temporary stubs in
- * src/components/_stubs/. When Agent A's modules land, change ONLY these
- * import paths (the prop/hook signatures are identical):
- *   Orb                         -> "@/components/orb/Orb"
- *   useAudioLevel/useAudioLevelRef -> "@/components/orb/useAudioLevel"
- *   AppShell                    -> "@/components/layout/AppShell"
+ * Single seam between the voice components and the rest of the app. Everything
+ * the voice UI needs from other modules is re-exported here so a path change
+ * (or a test mock) touches one file.
  */
-export { Orb, type OrbProps } from "@/components/_stubs/Orb"; // STUB
-export { useAudioLevel, useAudioLevelRef } from "@/components/_stubs/useAudioLevel"; // STUB
-export { AppShell } from "@/components/_stubs/AppShell"; // STUB
+export { Orb, type OrbProps } from "@/components/orb/Orb";
+export { useAudioLevel, useAudioLevelRef } from "@/components/orb/useAudioLevel";
+export { AppShell } from "@/components/layout/AppShell";
 
 export { usePreferences, useReducedMotion } from "@/components/providers";
 export {

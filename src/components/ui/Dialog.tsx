@@ -48,7 +48,10 @@ export function Dialog({ open, onClose, title, description, children, actions, t
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
-    const focusables = () => Array.from(panel?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    const focusables = () =>
+      Array.from(panel?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []).filter(
+        (el) => !el.hidden && el.getAttribute("aria-hidden") !== "true" && !el.closest("[hidden]"),
+      );
 
     const raf = requestAnimationFrame(() => {
       const preferred = initialFocusRef?.current;

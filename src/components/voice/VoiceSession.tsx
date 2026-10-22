@@ -6,7 +6,6 @@
  * persistent "Simulated — no live AI" badge.
  */
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import type { ToolCallRequest } from "@/lib/ai/adapters/types";
 import { connectedSeconds, describeStatus, describeTool } from "@/lib/ai/realtime/conversationState";
 import type { UiAction } from "@/lib/ai/tools/clientDispatcher";
 import { apiFetch } from "@/lib/api/client";
@@ -55,7 +54,7 @@ export function VoiceSession() {
   const conversationRef = useRef<ReturnType<typeof useConversation> | null>(null);
 
   const onUiAction = useCallback(
-    (action: UiAction, _call: ToolCallRequest) => {
+    (action: UiAction) => {
       switch (action.type) {
         case "consent_prompt":
           setConsentPrompt(action.scope);
@@ -105,18 +104,15 @@ export function VoiceSession() {
     pauseSensitivity,
     onUiAction,
   });
-  conversationRef.current = conversation;
+  useEffect(() => {
+    conversationRef.current = conversation;
+  }, [conversation]);
   const { state, micStream, remoteStream, start, end, interrupt, toggleMute, sendText, switchModel, summary, starting, ending, switchNote, clearSwitchNote, reset } = conversation;
 
   const micLevelRaw = useAudioLevel(micStream);
   const remoteLevel = useAudioLevel(remoteStream);
   const micLevel = state.muted ? 0 : micLevelRaw;
   const outputLevel = remoteStream ? remoteLevel : state.outputLevel;
-
-  // Dismiss stale consent prompts when the conversation ends.
-  useEffect(() => {
-    if (state.connection === "ended" || state.connection === "disconnected") setConsentPrompt(null);
-  }, [state.connection]);
 
   // Model switch note fades after a while.
   useEffect(() => {
@@ -154,6 +150,8 @@ export function VoiceSession() {
   const statusTone = state.lastError && !state.lastError.recoverable ? "error" : state.lastError?.recoverable && state.connection === "connected" ? "warning" : "normal";
   const connected = state.connection === "connected" || state.connection === "reconnecting";
   const active = connected || state.connection === "connecting" || state.connection === "requesting_mic";
+  // A consent card only makes sense while connected; a stale one is dropped on the next start.
+  const consentVisible = consentPrompt && connected ? consentPrompt : null;
   const showSummary = state.connection === "ended" && !ending;
   const simulated = state.session?.simulated ?? mode === "demo";
   const toolChip = describeTool(state.activeTool);
@@ -203,15 +201,17 @@ export function VoiceSession() {
       ) : (
         <>
           <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 py-2">
-            <Orb
-              state={state.orb}
-              micLevel={micLevel}
-              outputLevel={outputLevel}
-              color={orbColor}
-              size="fluid"
-              reducedMotion={reducedMotion}
-              label={`${companionName}: ${statusText}`}
-            />
+            <div data-testid="orb-stage" data-orb-state={state.orb} className="flex items-center justify-center">
+              <Orb
+                state={state.orb}
+                micLevel={micLevel}
+                outputLevel={outputLevel}
+                color={orbColor}
+                size="fluid"
+                reducedMotion={reducedMotion}
+                label={`${companionName}: ${statusText}`}
+              />
+            </div>
             <StatusLine text={statusText} tone={statusTone} />
             {toolChip ? (
               <Badge variant="accent" size="md" data-testid="tool-chip" className="animate-pulse-soft">
@@ -229,11 +229,19 @@ export function VoiceSession() {
             />
           ) : null}
 
-          {consentPrompt ? <ConsentCard scope={consentPrompt} busy={consentBusy} onYes={() => void handleConsent(true)} onNotNow={() => void handleConsent(false)} /> : null}
+          {consentVisible ? <ConsentCard scope={consentVisible} busy={consentBusy} onYes={() => void handleConsent(true)} onNotNow={() => void handleConsent(false)} /> : null}
 
           {!active ? (
             <div className="flex w-full flex-col items-center gap-3">
-              <Button size="xl" variant="primary" data-testid="start-button" onClick={() => void start()} loading={starting} loadingLabel="Starting" className="w-full max-w-md text-[1.25rem]">
+              <Button
+                size="xl"
+                variant="primary"
+                data-testid="start-button"
+                onClick={() => {
+                  setConsentPrompt(null);
+                  void start();
+                }}
+                loading={starting} loadingLabel="Starting" className="w-full max-w-md text-[1.25rem]">
                 Start talking
               </Button>
               <p className="text-center text-[1rem] text-subtle">

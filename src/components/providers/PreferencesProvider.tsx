@@ -91,7 +91,7 @@ export function PreferencesProvider({ children, initialMe }: { children: ReactNo
         }
         // Routes may be missing while the app is being built (404) — treat as signed out, but report it.
         commit(null);
-        setError(err instanceof Error ? err.message : "Could not load your profile.");
+        setError((err instanceof Error && err.message) || "Could not load your profile.");
       })
       .finally(() => {
         if (seq === requestSeq.current) setLoading(false);

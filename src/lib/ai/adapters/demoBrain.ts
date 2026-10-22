@@ -122,12 +122,12 @@ export function parseHumorCommand(text: string, current: HumorLevel): HumorLevel
 
 const NAME_REJECT = new Set([
   "yes", "no", "hello", "hi", "hey", "okay", "ok", "sure", "thanks", "thank", "what", "nothing", "fine", "good", "here",
-  "ready", "well", "um", "not", "none", "nobody", "please", "margaret", "walter", "fred", "ethel", "anything", "whatever",
-  "tired", "sorry", "happy", "sad", "lonely", "hungry", "busy", "back", "done", "home", "glad", "afraid", "scared", "sure",
+  "ready", "well", "um", "not", "none", "nobody", "please", "anything", "whatever", "just", "still", "also", "going",
+  "tired", "sorry", "happy", "sad", "lonely", "hungry", "busy", "back", "done", "home", "glad", "afraid", "scared", "the",
 ]);
 const NAME_WORD = String.raw`([A-Za-z][A-Za-z'\-]{1,30})`;
 const NAME_EXPLICIT_RE = new RegExp(String.raw`\b(?:call me|my name is|my name's|the name is|i go by|you can call me|just call me|everyone calls me|people call me|i'?m called|name's)\s+` + NAME_WORD + String.raw`(?:\s+(?!and\b|but\b|or\b|if\b|so\b|please\b)([A-Z][A-Za-z'\-]{1,30}))?`, "i");
-const NAME_SOFT_RE = new RegExp(String.raw`^(?:(?:oh|well|um|uh|hmm)[,\s]+)*(?:it'?s|i'?m|i am|this is|that'?s)\s+` + NAME_WORD + String.raw`(?:\s+([A-Z][A-Za-z'\-]{1,30}))?[.!]?$`, "i");
+const NAME_SOFT_RE = new RegExp(String.raw`^(?:(?:oh|well|um|uh|hmm)[,\s]+)*(?:it'?s|i'?m|i am|this is|that'?s)\s+` + NAME_WORD + String.raw`(?:\s+([A-Z][A-Za-z'\-]{1,30}))?(?=[\s.,!]|$)`, "i");
 const NAME_BARE_RE = new RegExp(String.raw`^(?:(?:oh|well|um|uh|hmm)[,\s]+)*` + NAME_WORD + String.raw`(?:\s+([A-Z][A-Za-z'\-]{1,30}))?[.!]?$`, "i");
 
 function titleCase(word: string): string {
@@ -140,13 +140,21 @@ function titleCase(word: string): string {
  */
 export function parseNameStatement(text: string, awaitingName: boolean): string | null {
   const candidates: RegExp[] = awaitingName ? [NAME_EXPLICIT_RE, NAME_SOFT_RE, NAME_BARE_RE] : [NAME_EXPLICIT_RE];
+  const wordCount = text.trim().split(/\s+/).length;
   for (const re of candidates) {
     const match = text.trim().match(re);
     if (!match) continue;
     const first = match[1];
-    if (!first || NAME_REJECT.has(first.toLowerCase()) || extractKeywords(first).length === 0 && first.length < 3) continue;
+    if (!first || NAME_REJECT.has(first.toLowerCase()) || first.length < 2) continue;
     if (!/^[A-Za-z][A-Za-z'\-]*$/.test(first)) continue;
-    const second = match[2] && !NAME_REJECT.has(match[2].toLowerCase()) ? ` ${titleCase(match[2])}` : "";
+    // Soft forms ("I'm Peg and ...") need a capitalised name unless the whole reply is short.
+    if (re === NAME_SOFT_RE && wordCount > 3 && first.charAt(0) !== first.charAt(0).toUpperCase()) continue;
+    // A second word is a surname only when it is actually capitalised (the regexes are case-insensitive).
+    const secondRaw = match[2];
+    const second =
+      secondRaw && /^[A-Z]/.test(secondRaw) && !NAME_REJECT.has(secondRaw.toLowerCase()) && !/^(and|but|or|if|so|then|please)$/i.test(secondRaw)
+        ? ` ${titleCase(secondRaw)}`
+        : "";
     return `${titleCase(first)}${second}`;
   }
   return null;
@@ -240,7 +248,7 @@ function capitalize(text: string): string {
 
 const REFLECT_WITH_PHRASE = [
   "So {P}. Tell me more — what was the best part of that?",
-  "{PC} — I'd like the longer version, if you're in the mood to tell it.",
+  "{PC} — I'd like the longer version, if you're in the mood. Where does it start?",
   "Hm, {P}. What happened next?",
   "It sounds like {P}. Is that a usual thing for you, or a one-off?",
   "{PC}. I'm curious what made that stand out today.",
@@ -377,14 +385,16 @@ async function remember(turn: Turn, content: string, userWords: string, userConf
 
 async function recallFor(turn: Turn, query: string, limit: number): Promise<Memory[]> {
   if (!turn.memoryOn) return [];
-  return tool(turn, "recall_memories", { query, limit }, () => memoryService.recallMemories(turn.userId, query, limit)).then((memories) =>
-    memories as Memory[],
-  );
+  return tool(turn, "recall_memories", { query, limit }, () => memoryService.recallMemories(turn.userId, query, limit));
+}
+
+/** "My granddaughter Lily plays the violin" -> "your granddaughter Lily plays the violin" (for speaking back). */
+function spoken(content: string): string {
+  return lowerFirst(toSecondPerson(content.replace(/[.!?]+$/, "")));
 }
 
 function memoryCallback(memory: Memory): string {
-  const content = memory.content.replace(/[.!?]+$/, "");
-  return `${lowerFirst(content)}`;
+  return spoken(memory.content);
 }
 
 // ----- onboarding -----------------------------------------------------------
@@ -395,6 +405,20 @@ async function greet(turn: Turn): Promise<{ reply: string; next: DemoState }> {
     next.awaiting = "name";
     return {
       reply: `Hello there — I'm ${turn.companion}. I'm glad you're here. We can talk about anything you like, and there's no rush at all. First things first: what would you like me to call you?`,
+      next,
+    };
+  }
+  if (turn.profile.onboardingStage === "named") {
+    next.awaiting = "interest";
+    return {
+      reply: `Hello, ${turn.name} — I'm ${turn.companion}. It's good to meet you. I'd like to know a little about what you enjoy. What's something that fills a good afternoon for you — a hobby, a show, a pastime of any kind?`,
+      next,
+    };
+  }
+  if (turn.profile.onboardingStage === "interests" && !turn.memoryOn) {
+    next.awaiting = "memory_consent";
+    return {
+      reply: `Hello, ${turn.name}, it's ${turn.companion}. One question before we dive in. Would you like me to remember things you tell me between our chats? You can say no, and you can always change your mind.`,
       next,
     };
   }
@@ -437,20 +461,30 @@ async function onboardingInterest(turn: Turn): Promise<{ reply: string; next: De
       ? `${capitalize(echo)} — that sounds like a good way to spend time.`
       : "That sounds like a good way to spend time.";
   return {
-    reply: `${lead} Here's a question before we go on: would you like me to remember things like that between our chats? You can say no, and you can always change your mind.`,
+    reply: `${lead} Here's a question before we go on. Would you like me to remember things like that between our chats? You can say no, and you can always change your mind.`,
     next: { ...turn.state, awaiting: "memory_consent", pendingInterest: skipped ? null : turn.text },
   };
 }
 
 async function onboardingConsent(turn: Turn): Promise<{ reply: string; next: DemoState } | null> {
   const pending = turn.state.pendingRemember ?? null;
-  if (isYes(turn.text)) {
+  const rememberNow = parseRememberRequest(turn.text);
+  if (isYes(turn.text) || rememberNow) {
     await consent(turn, "memory", true, turn.text);
     let reply = "Thank you — I'll remember the things you share. You can ask me what I've kept, or tell me to forget something, any time.";
-    if (pending) {
-      const result = await remember(turn, pending.content, pending.userWords, pending.userConfirmed);
-      reply += result.ok ? ` I've saved that ${lowerFirst(pending.content.replace(/[.!?]+$/, ""))}.` : "";
-    } else if (turn.state.pendingInterest) {
+    let needsSensitive: DemoState["pendingRemember"] = null;
+    for (const item of [pending, rememberNow && rememberNow !== pending?.content ? { content: rememberNow, userWords: turn.text, userConfirmed: true } : null]) {
+      if (!item) continue;
+      const result = await remember(turn, item.content, item.userWords, item.userConfirmed);
+      if (result.ok) reply += ` I've saved that ${spoken(item.content)}.`;
+      else if (result.reason === "sensitive_consent_required") needsSensitive = item;
+    }
+    if (needsSensitive) {
+      turn.uiActions.push({ type: "consent_prompt", scope: "sensitive_memory" });
+      reply += ` One more thing: what you asked me to keep touches on health, money or grief, which I keep separate. Shall I remember personal things like that too? Yes or no is fine.`;
+      return { reply, next: { ...turn.state, awaiting: "sensitive_consent", pendingInterest: null, pendingRemember: needsSensitive, unclear: 0 } };
+    }
+    if (!pending && !rememberNow && turn.state.pendingInterest) {
       const content = toThirdPersonInterest(turn.state.pendingInterest);
       if (content) {
         const result = await remember(turn, content, turn.state.pendingInterest, false);
@@ -487,7 +521,7 @@ async function sensitiveConsent(turn: Turn): Promise<{ reply: string; next: Demo
     let reply = "Alright — I'll keep personal matters like that too, and you can always tell me to forget them.";
     if (pending) {
       const result = await remember(turn, pending.content, pending.userWords, pending.userConfirmed);
-      if (result.ok) reply += ` I've saved that ${lowerFirst(pending.content.replace(/[.!?]+$/, ""))}.`;
+      if (result.ok) reply += ` I've saved that ${spoken(pending.content)}.`;
     }
     return { reply: `${reply} How are you doing with all of it?`, next: { ...turn.state, awaiting: null, pendingRemember: null } };
   }
@@ -636,7 +670,8 @@ async function respond(turn: Turn): Promise<{ reply: string; next: DemoState }> 
     base.awaiting = null;
     base.pendingRemember = null;
   }
-  const next: DemoState = { ...base, awaiting: state.awaiting === "name" ? "name" : null, unclear: 0 };
+  const carry = state.awaiting === "name" || state.awaiting === "interest" ? state.awaiting : null;
+  const next: DemoState = { ...base, awaiting: carry, unclear: 0 };
   if (turn.profile.onboardingStage === "memory_decided") {
     await memoryService.updateProfile(turn.userId, { onboardingStage: "complete" });
   }
@@ -666,8 +701,8 @@ async function respond(turn: Turn): Promise<{ reply: string; next: DemoState }> 
     }
     const memories = await recallFor(turn, "", 8);
     if (memories.length === 0) return { reply: "Honestly, nothing yet — I haven't saved anything about you. Tell me something worth keeping and I will.", next };
-    const confirmed = memories.filter((m) => m.status === "confirmed").map((m) => lowerFirst(m.content.replace(/[.!?]+$/, "")));
-    const mentioned = memories.filter((m) => m.status !== "confirmed").map((m) => lowerFirst(m.content.replace(/[.!?]+$/, "")));
+    const confirmed = memories.filter((m) => m.status === "confirmed").map((m) => spoken(m.content));
+    const mentioned = memories.filter((m) => m.status !== "confirmed").map((m) => spoken(m.content));
     let reply = "Here's what I have.";
     if (confirmed.length) reply += ` You asked me to remember that ${joinList(confirmed)}.`;
     if (mentioned.length) reply += ` You've also mentioned that ${joinList(mentioned)} — I haven't treated those as certain.`;
@@ -701,7 +736,7 @@ async function respond(turn: Turn): Promise<{ reply: string; next: DemoState }> 
     const result = await remember(turn, rememberContent, text, true);
     if (result.ok) {
       const ack = pick(["Got it", "Noted", "Saved", "I'll remember that"], turn.hash);
-      return { reply: `${ack} — ${lowerFirst(result.memory.content)}. ${pick(["Anything else I should know about that?", "Tell me more about it, if you like.", "What else is going on?"], turn.hash, 1)}`, next };
+      return { reply: `${ack} — ${spoken(result.memory.content)}. ${pick(["Anything else I should know about that?", "Tell me more about it, if you like.", "What else is going on?"], turn.hash, 1)}`, next };
     }
     if (result.reason === "sensitive_consent_required") {
       turn.uiActions.push({ type: "consent_prompt", scope: "sensitive_memory" });

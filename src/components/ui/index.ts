@@ -1,5 +1,6 @@
 export { cn } from "./cn";
-export { Button, LinkButton, buttonClassName, type ButtonProps, type ButtonVariant, type ButtonSize } from "./Button";
+export { Button, LinkButton, type ButtonProps } from "./Button";
+export { buttonClassName, type ButtonVariant, type ButtonSize } from "./buttonStyles";
 export { IconButton, type IconButtonProps } from "./IconButton";
 export { Toggle, type ToggleProps } from "./Toggle";
 export { Select, type SelectProps, type SelectOption } from "./Select";

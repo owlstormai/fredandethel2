@@ -67,6 +67,7 @@ export function Orb({ state, micLevel, outputLevel, color, size = "fluid", reduc
   useEffect(() => {
     const canvas = canvasRef.current;
     const wrapper = wrapperRef.current;
+    console.log("[orb-debug] mount effect", { canvas: !!canvas, wrapper: !!wrapper });
     if (!canvas || !wrapper) return;
 
     const renderer = new OrbRenderer(canvas);
@@ -83,8 +84,10 @@ export function Orb({ state, micLevel, outputLevel, color, size = "fluid", reduc
     let lastFrame = -Infinity;
     let lastAttr = -Infinity;
 
+    let frames = 0;
     const loop = (now: number) => {
       raf = 0;
+      if (frames++ < 3) console.log("[orb-debug] loop", frames, now, wrapper.getBoundingClientRect().width, canvas.width);
       const { mic, output } = readLevels();
       const minInterval = renderer.isReducedMotion ? REDUCED_FRAME_INTERVAL_MS : 0;
       if (now - lastFrame >= minInterval) {
@@ -111,11 +114,13 @@ export function Orb({ state, micLevel, outputLevel, color, size = "fluid", reduc
       renderer.resize(rect.width, rect.height, window.devicePixelRatio || 1);
     };
     measure();
+    console.log("[orb-debug] measured", wrapper.getBoundingClientRect().width, canvas.width, canvas.height);
 
     const observer =
       typeof ResizeObserver !== "undefined"
         ? new ResizeObserver(() => {
             measure();
+    console.log("[orb-debug] measured", wrapper.getBoundingClientRect().width, canvas.width, canvas.height);
             if (document.hidden) {
               const { mic, output } = readLevels();
               renderer.frame(performance.now(), mic, output);
@@ -132,6 +137,7 @@ export function Orb({ state, micLevel, outputLevel, color, size = "fluid", reduc
     if (!document.hidden) start();
 
     return () => {
+      console.log("[orb-debug] cleanup");
       stop();
       observer?.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);

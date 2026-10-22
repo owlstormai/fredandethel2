@@ -61,7 +61,6 @@ export function Controls({ muted, onToggleMute, canInterrupt, onInterrupt, onEnd
           onClick={onEnd}
           loading={ending}
           loadingLabel="Ending"
-          disabled={disabled && !ending}
           className="min-w-[9.5rem]"
         >
           End conversation

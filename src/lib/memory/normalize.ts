@@ -45,8 +45,18 @@ export function tokenize(text: string): string[] {
   return normalized ? normalized.split(" ") : [];
 }
 
+/** Words whose -ing/-ed ending is not a suffix (or whose stem would be misleading). */
+const NO_STEM: ReadonlySet<string> = new Set([
+  "morning", "evening", "something", "nothing", "anything", "everything", "during", "ceiling", "building",
+  "wedding", "clothing", "feeling", "meeting", "painting", "pudding", "darling", "sibling", "spring", "string",
+  "lightning", "offspring", "stocking", "dumpling", "herring", "earring",
+  "tired", "hundred", "wicked", "naked", "sacred", "hatred", "kindred", "wretched", "rugged", "ragged", "jagged",
+  "blessed", "aged", "beloved", "crooked", "bed", "red", "shed", "need", "seed", "feed", "weed", "speed",
+]);
+
 /** Very light stemmer: plurals, -ing, -ed. Not linguistic, just consistent. */
 export function stem(word: string): string {
+  if (NO_STEM.has(word)) return word;
   let w = word;
   if (w.length > 5 && w.endsWith("ies")) return w.slice(0, -3) + "y";
   if (w.length > 5 && w.endsWith("ing")) {
@@ -59,6 +69,7 @@ export function stem(word: string): string {
     if (w.length > 3 && /([^aeiou])\1$/.test(w)) w = w.slice(0, -1); // stopped -> stop
     return w;
   }
+  if (w.length > 4 && /(oes|ches|shes|xes|zes|sses)$/.test(w)) return w.slice(0, -2); // tomatoes -> tomato, dishes -> dish
   if (w.length > 3 && w.endsWith("s") && !w.endsWith("ss") && !w.endsWith("us") && !w.endsWith("is")) {
     return w.slice(0, -1);
   }
