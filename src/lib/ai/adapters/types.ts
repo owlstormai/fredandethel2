@@ -62,10 +62,10 @@ export type AdapterEvent =
   | { type: "status"; status: ConnectionStatus; detail?: string }
   | { type: "session"; info: AdapterSessionInfo }
   | { type: "user_speech_started" }
-  | { type: "user_speech_stopped" }
+  | { type: "user_speech_stopped"; /** Measured speech length when the provider reports it (additive, optional). */ durationMs?: number }
   | { type: "response_started"; responseId: string }
   | { type: "assistant_speech_started"; responseId: string }
-  | { type: "assistant_speech_stopped"; responseId: string }
+  | { type: "assistant_speech_stopped"; responseId: string; /** Measured audio length when known (additive, optional). */ durationMs?: number }
   | { type: "response_done"; responseId: string; status: string; usage: TokenUsage | null }
   | { type: "interrupted"; responseId: string | null }
   | {
