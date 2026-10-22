@@ -10,7 +10,7 @@ The build ran in a Claude Code cloud container (not a hosting service):
 | Fact | Verified how |
 |---|---|
 | Node 22.22, npm 10.9, Postgres 16.15 (local cluster), Chromium 141 with Playwright | `node -v`, `pg_lsclusters`, `/opt/pw-browsers/chromium --version` |
-| Outbound HTTPS to `api.openai.com` works (returned 401 without a key) | `curl -sS -o /dev/null -w "%{http_code}" https://api.openai.com/v1/models` |
+| Outbound HTTPS to `api.openai.com` (401 without a key), `api.vercel.com` (403 "missing token") and `api.supabase.com` (401) all reachable | `curl -sS -o /dev/null -w "%{http_code}" https://api.openai.com/v1/models` |
 | Docker client present, daemon **not** usable → local Postgres used instead of Compose | `docker info` |
 | **No public or invite-only URL can be served from this container.** It has no inbound routing. | Environment documentation for the cloud session |
 | `OPENAI_API_KEY`, `DATABASE_URL` (Supabase), `VERCEL_TOKEN` were **not present** during the build session | `env` check |
@@ -55,7 +55,7 @@ infrastructure charges have been incurred. To deploy:
 4. Run `npm run verify` locally with the same env to confirm key, models and a
    client-secret mint before sharing the URL.
 
-Automated deploy from the cloud session: when `VERCEL_TOKEN`, `DATABASE_URL` and
+Automated deploy from the cloud session: `scripts/deploy-vercel.sh` performs steps 1–4 (migrate, seed, verify, set env, deploy). When `VERCEL_TOKEN`, `DATABASE_URL` and
 `OPENAI_API_KEY` are present in the environment, the steps above can be executed by
 Claude in a new session on this branch. **Status: not executed** (credentials were
 not available during the build).
