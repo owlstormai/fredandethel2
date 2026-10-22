@@ -220,3 +220,17 @@ export interface HealthResponse {
 }
 
 export interface ApiError { error: { code: string; message: string; details?: unknown } }
+
+// ----- additive response types (Agent C) -----------------------------------
+export interface ProfileResponse { profile: Profile }
+export interface PreferencesResponse { preferences: Preferences }
+export interface ConsentResponse { consent: ConsentRecord }
+export interface DemoProfilesResponse {
+  profiles: Array<{ slug: string; displayName: string; blurb: string; companionVoice: Profile["companionVoice"] }>;
+}
+export interface ConversationsListResponse { conversations: Conversation[] }
+export interface ConversationResponse { conversation: Conversation }
+export interface ConversationEventsResponse { ok: true; received: number; stored: number }
+export interface DeleteMemoryResponse { deleted: Memory[] }
+export interface MemoryResponse { memory: Memory }
+export interface OkResponse { ok: true }

@@ -146,19 +146,15 @@ function addUsage(total: TokenUsage, delta: TokenUsage | null): TokenUsage {
 
 const TOOL_LABELS: Record<string, string> = {
   search_web: "Looking that up…",
-  web_search: "Looking that up…",
   remember: "Saving a memory…",
-  save_memory: "Saving a memory…",
+  forget: "Forgetting that…",
+  recall_memories: "Remembering…",
   record_consent: "Noting your choice…",
-  request_consent: "Asking permission…",
-  recall_memory: "Remembering…",
-  forget_memory: "Forgetting that…",
-  delete_memory: "Forgetting that…",
-  set_humor: "Adjusting humor…",
-  set_humor_level: "Adjusting humor…",
-  set_name: "Noting your name…",
+  request_memory_consent: "Asking permission…",
   set_preferred_name: "Noting your name…",
+  set_humor_level: "Adjusting humor…",
   end_conversation: "Wrapping up…",
+  ui_action: "One moment…",
 };
 
 /** Plain-language chip text for an active tool. */
@@ -365,8 +361,8 @@ export function conversationReducer(state: ConversationState, action: Conversati
       return withOrb({
         ...base,
         activeTool: null,
-        // The model will produce a follow-up response after a tool result.
-        awaitingResponse: result.uiAction?.type === "end_conversation" ? false : true,
+        // The model produces a follow-up response after every tool result (a goodbye for end_conversation).
+        awaitingResponse: true,
         pendingSources: result.sources?.length ? result.sources : base.pendingSources,
       });
     }

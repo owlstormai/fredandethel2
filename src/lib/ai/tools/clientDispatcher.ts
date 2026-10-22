@@ -29,23 +29,27 @@ export function narrowUiAction(raw: unknown): UiAction | undefined {
   switch (type as UiAction["type"]) {
     case "consent_prompt": {
       const scope = rec.scope;
-      if (scope === "memory" || scope === "sensitive_memory" || scope === "web_search") return { type, scope };
+      if (scope === "memory" || scope === "sensitive_memory" || scope === "web_search") {
+        return { type: "consent_prompt", scope };
+      }
       return undefined;
     }
     case "memory_saved":
       if (typeof rec.memoryId === "string" && typeof rec.content === "string") {
-        return { type, memoryId: rec.memoryId, content: rec.content };
+        return { type: "memory_saved", memoryId: rec.memoryId, content: rec.content };
       }
       return undefined;
     case "memory_deleted":
-      return typeof rec.memoryId === "string" ? { type, memoryId: rec.memoryId } : undefined;
+      return typeof rec.memoryId === "string" ? { type: "memory_deleted", memoryId: rec.memoryId } : undefined;
     case "humor_changed":
-      if (rec.level === "off" || rec.level === "gentle" || rec.level === "playful") return { type, level: rec.level };
+      if (rec.level === "off" || rec.level === "gentle" || rec.level === "playful") {
+        return { type: "humor_changed", level: rec.level };
+      }
       return undefined;
     case "name_set":
-      return typeof rec.name === "string" ? { type, name: rec.name } : undefined;
+      return typeof rec.name === "string" ? { type: "name_set", name: rec.name } : undefined;
     case "end_conversation":
-      return { type };
+      return { type: "end_conversation" };
     default:
       return undefined;
   }
