@@ -28,7 +28,7 @@ export function Controls({ muted, onToggleMute, canInterrupt, onInterrupt, onEnd
 
   return (
     <div className={cn("flex w-full flex-col gap-4", className)}>
-      <div className="flex flex-wrap items-center justify-center gap-3">
+      <div className="grid w-full grid-cols-2 items-center gap-3 sm:flex sm:flex-wrap sm:justify-center">
         <Button
           size="xl"
           variant={muted ? "primary" : "secondary"}
@@ -37,7 +37,7 @@ export function Controls({ muted, onToggleMute, canInterrupt, onInterrupt, onEnd
           onClick={onToggleMute}
           disabled={disabled}
           leadingIcon={muted ? <MicOffIcon /> : <MicIcon />}
-          className="min-w-[9.5rem]"
+          className="min-w-0 sm:min-w-[9.5rem]"
         >
           {muted ? "Unmute" : "Mute"}
         </Button>
@@ -49,9 +49,10 @@ export function Controls({ muted, onToggleMute, canInterrupt, onInterrupt, onEnd
             onClick={onInterrupt}
             disabled={disabled}
             leadingIcon={<PauseIcon />}
-            className="min-w-[9.5rem] border-accent/50"
+            className="min-w-0 border-accent/50 sm:min-w-[9.5rem]"
           >
-            Stop talking
+            <span className="sm:hidden">Stop</span>
+            <span className="hidden sm:inline">Stop talking</span>
           </Button>
         ) : null}
         <Button
@@ -61,7 +62,7 @@ export function Controls({ muted, onToggleMute, canInterrupt, onInterrupt, onEnd
           onClick={onEnd}
           loading={ending}
           loadingLabel="Ending"
-          className="min-w-[9.5rem]"
+          className="col-span-2 min-w-[9.5rem] sm:col-span-1"
         >
           End conversation
         </Button>

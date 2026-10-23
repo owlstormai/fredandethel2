@@ -110,7 +110,11 @@ export function AppShell({ children, compact = false, contained, className }: Ap
                     <UserIcon className="size-5" />
                   </span>
                   <span className="hidden min-w-0 truncate text-[1rem] font-medium sm:block">{displayName}</span>
-                  {me.user.isDemo ? <Badge variant="warning" className="hidden sm:inline-flex">Demo profile</Badge> : null}
+                  {me.user.isDemo ? (
+                    <span className="hidden sm:inline-flex">
+                      <Badge variant="warning">Demo profile</Badge>
+                    </span>
+                  ) : null}
                 </Link>
                 <button
                   type="button"

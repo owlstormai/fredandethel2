@@ -445,9 +445,12 @@ function deconjugate(verb: string): string {
  * garden; the tomatoes are your pride"). Returns `null` when the result would
  * not read as a sentence addressed to the user.
  */
-export function memoryToSecondPerson(content: string, name: string | null): string | null {
+export function memoryToSecondPerson(content: string, name: string | null, category?: MemoryCategory): string | null {
   let out = content.trim().replace(/[.!?]+$/, "");
   if (!out) return null;
+  // Memories about other people ("my neighbour's dog … he is a beagle") contain
+  // subject pronouns that do NOT refer to the user; only possessives are safe there.
+  const aboutOthers = category === "family" || category === "friends" || category === "story";
   if (name) {
     const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     out = out
@@ -458,7 +461,10 @@ export function memoryToSecondPerson(content: string, name: string | null): stri
       .replace(new RegExp(`\\b${n}\\b`, "g"), "you");
   }
   out = toSecondPerson(out);
-  for (const [re, rep] of THIRD_PERSON) out = out.replace(re, rep);
+  for (const [re, rep] of THIRD_PERSON) {
+    if (aboutOthers && !/\(her\|his\|their\)|\(Her\|His\|Their\)|hers|herself/.test(re.source)) continue;
+    out = out.replace(re, rep);
+  }
   const words = out.split(/\s+/);
   const token = words[0] ?? "";
   const first = token.toLowerCase().replace(/[^a-z']/g, "");
@@ -480,7 +486,7 @@ export function memoryToSecondPerson(content: string, name: string | null): stri
 
 /** A natural callback to a memory, or a quoted note when conversion is unsafe. */
 function memoryCallback(memory: Memory, name: string | null, mode: "mentioned" | "told"): string {
-  const phrase = memoryToSecondPerson(memory.content, name);
+  const phrase = memoryToSecondPerson(memory.content, name, memory.category);
   if (phrase) return mode === "mentioned" ? `you mentioned ${phrase}` : `you told me ${phrase}`;
   const note = memory.content.trim().replace(/[.!?]+$/, "");
   return mode === "mentioned" ? `you shared this with me: "${note}"` : `I kept a note that says: "${note}"`;

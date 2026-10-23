@@ -12,7 +12,7 @@ describe("memoryToSecondPerson", () => {
     expect(memoryToSecondPerson("Granddaughter Lily plays the violin and has a recital coming up", "Margaret")).toBe(
       "your granddaughter Lily plays the violin and has a recital coming up",
     );
-    expect(memoryToSecondPerson("Widower; his wife June passed away three years ago", "Walter")).toBe(
+    expect(memoryToSecondPerson("Widower; his wife June passed away three years ago", "Walter", "family")).toBe(
       "you're a widower; your wife June passed away three years ago",
     );
     expect(memoryToSecondPerson("Takes his coffee black and strong", "Walter")).toBe("you take your coffee black and strong");
@@ -21,6 +21,15 @@ describe("memoryToSecondPerson", () => {
 
   it("converts the user's own first-person words", () => {
     expect(memoryToSecondPerson("I take my coffee with two sugars.", "Paul")).toBe("you take your coffee with two sugars");
+  });
+
+  it("leaves subject pronouns alone in memories about other people", () => {
+    expect(memoryToSecondPerson("My neighbour's dog is called Biscuit and he is a beagle", "Walter", "friends")).toBe(
+      "your neighbour's dog is called Biscuit and he is a beagle",
+    );
+    expect(memoryToSecondPerson("Granddaughter Lily plays the violin; she has a recital soon", "Margaret", "family")).toBe(
+      "your granddaughter Lily plays the violin; she has a recital soon",
+    );
   });
 
   it("returns null when it cannot address the user", () => {

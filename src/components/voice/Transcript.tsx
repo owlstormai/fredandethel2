@@ -11,19 +11,23 @@ export interface TranscriptProps {
 }
 
 export function Transcript({ entries, companionName, userName, className }: TranscriptProps) {
-  const endRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLElement>(null);
   const lastKey = entries.length ? `${entries[entries.length - 1].id}:${entries[entries.length - 1].text.length}` : "";
 
+  // Scroll the captions panel itself, never the page: scrollIntoView would also
+  // scroll the window and push the orb under the header.
   useEffect(() => {
-    endRef.current?.scrollIntoView?.({ block: "end", behavior: "auto" });
+    const el = containerRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, [lastKey]);
 
   return (
     <section
+      ref={containerRef}
       data-testid="transcript"
       role="log"
       aria-label="Captions"
-      className={cn("panel max-h-[40vh] w-full overflow-y-auto p-4 sm:p-5", className)}
+      className={cn("panel max-h-[32vh] w-full overflow-y-auto p-4 sm:p-5", className)}
     >
       {entries.length === 0 ? (
         <p className="text-center text-[1rem] text-subtle">Captions will appear here as you talk.</p>
@@ -70,7 +74,6 @@ export function Transcript({ entries, companionName, userName, className }: Tran
           ))}
         </ol>
       )}
-      <div ref={endRef} />
     </section>
   );
 }

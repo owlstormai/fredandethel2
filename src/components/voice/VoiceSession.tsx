@@ -165,9 +165,9 @@ export function VoiceSession() {
   }
 
   return (
-    <div className="flex w-full flex-1 flex-col items-center gap-5" data-testid="voice-session" data-mode={mode}>
+    <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col items-center gap-4 px-4 pb-4 pt-5 sm:px-6" data-testid="voice-session" data-mode={mode}>
       <div className="flex w-full flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {simulated ? (
             <Badge variant="simulated" size="md" data-testid="simulated-badge">
               Simulated — no live AI
@@ -201,7 +201,11 @@ export function VoiceSession() {
       ) : (
         <>
           <div className="flex w-full flex-1 flex-col items-center justify-center gap-4 py-2">
-            <div data-testid="orb-stage" data-orb-state={state.orb} className="flex items-center justify-center">
+            <div
+              data-testid="orb-stage"
+              data-orb-state={state.orb}
+              className="flex aspect-square w-[min(80vw,38vh,20rem)] items-center justify-center sm:w-[min(46vh,24rem)]"
+            >
               <Orb
                 state={state.orb}
                 micLevel={micLevel}
