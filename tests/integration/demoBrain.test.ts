@@ -3,7 +3,7 @@ import { GREETING_INPUT, maybeQuip, runDemoTurn, type DemoState } from "@/lib/ai
 import { ensureDemoUser } from "@/lib/auth/demo";
 import { startConversation } from "@/lib/conversations/service";
 import { getConversation, listMessages } from "@/lib/database/conversations";
-import { listMemories, listTombstones } from "@/lib/database/memories";
+import { listMemories, listMemoryEvents, listTombstones } from "@/lib/database/memories";
 import { hashText } from "@/lib/memory/normalize";
 import { getPreferences, getProfile, hasConsent, recordConsent, setHumorLevel } from "@/lib/memory/service";
 import type { User } from "@/lib/types";
@@ -110,7 +110,7 @@ describe("onboarding flow (new account, no consent)", () => {
 });
 
 describe("remember / forget / recall with a consented demo profile", () => {
-  it("round-trips a fact, lists it honestly, forgets it with a tombstone, and refuses to re-learn it", async () => {
+  it("round-trips a fact, lists it honestly, forgets it with a tombstone; an explicit re-add supersedes the tombstone", async () => {
     const user = (await ensureDemoUser("margaret"))!;
     const conversationId = await conversationFor(user);
 
@@ -142,9 +142,16 @@ describe("remember / forget / recall with a consented demo profile", () => {
     expect((await listTombstones(user.id)).map((t) => t.keywords)).toEqual([["neighbor", "rosa", "bring", "newspaper", "morning"]]);
     expect((await listMemories(user.id)).some((m) => /Rosa/.test(m.content))).toBe(false);
 
+    // A spoken "remember that ..." is an explicit, confirmed save: it supersedes the
+    // earlier "forget" (the tombstone is retired and the override is said out loud).
     const again = await runDemoTurn(user.id, conversationId, "Remember that my neighbor Rosa brings the newspaper");
-    expect(again.toolCalls[0].output).toContain("tombstoned");
-    expect(again.reply).toMatch(/asked me earlier to forget/);
+    expect(again.toolCalls[0]).toMatchObject({ name: "remember", arguments: { userConfirmed: true } });
+    expect(again.toolCalls[0].output).toContain('"retiredTombstones":1');
+    expect(again.reply).toMatch(/your neighbor Rosa brings the newspaper/);
+    expect(again.reply).toMatch(/asked me to forget something like this before/);
+    expect(await listTombstones(user.id)).toEqual([]);
+    expect((await listMemories(user.id)).some((m) => /Rosa/.test(m.content) && m.status === "confirmed")).toBe(true);
+    expect((await listMemoryEvents(user.id)).map((e) => e.event)).toContain("corrected");
 
     const nothing = await runDemoTurn(user.id, conversationId, "forget about my pet giraffe");
     expect(nothing.reply).toMatch(/nothing to forget/);

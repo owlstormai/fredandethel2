@@ -239,6 +239,17 @@ export async function listTombstones(userId: string): Promise<TombstoneRecord[]>
   return rows.map(mapTombstone);
 }
 
+/** Removes tombstones by id (an explicit user re-add supersedes them). Returns how many were removed. */
+export async function deleteTombstones(userId: string, tombstoneIds: string[]): Promise<number> {
+  if (tombstoneIds.length === 0) return 0;
+  const rows = await userQuery<{ id: string }>(
+    userId,
+    `DELETE FROM memory_tombstones WHERE user_id = $1 AND id = ANY($2::uuid[]) RETURNING id`,
+    [tombstoneIds],
+  );
+  return rows.length;
+}
+
 export async function countTombstones(userId: string): Promise<number> {
   const row = await userQueryOne<{ count: string }>(
     userId,

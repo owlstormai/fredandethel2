@@ -8,7 +8,12 @@
  *    preferences.memory_enabled). Sensitive content additionally requires
  *    "sensitive_memory" consent.
  *  - A statement matching a tombstone (something the user asked us to forget) is
- *    refused and logged as "rejected".
+ *    refused and logged as "rejected" — unless the user explicitly confirmed
+ *    saving THIS statement, which supersedes the tombstone: the matching
+ *    tombstones are retired (logged as "corrected") and the fact is saved as
+ *    confirmed. Summarization and unconfirmed model saves never override one.
+ *  - A person's name (preferred name, demo display names) is never a keyword
+ *    for tombstone creation or matching.
  *  - Near-duplicates are refused (the existing memory is returned).
  *  - Status is "confirmed" only when the user explicitly agreed to save THIS
  *    statement; otherwise "reported". Nothing here ever promotes a status.
@@ -43,7 +48,7 @@ import {
 } from "./repository";
 import { rankMemories } from "./retrieval";
 import { listRecentSummaries, suppressSummariesForDeletedMemory } from "./summaries";
-import { createTombstone, matchesTombstone } from "./tombstones";
+import { createTombstone, findMatchingTombstones, keywordExclusionsFor, retireTombstones } from "./tombstones";
 
 export interface RememberInput {
   content: string;
@@ -59,7 +64,13 @@ export interface RememberInput {
 }
 
 export type RememberResult =
-  | { ok: true; memory: Memory; status: Memory["status"] }
+  | {
+      ok: true;
+      memory: Memory;
+      status: Memory["status"];
+      /** Set when a confirmed save superseded tombstones (how many were retired). */
+      retiredTombstones?: number;
+    }
   | { ok: false; reason: "consent_required" | "sensitive_consent_required" | "tombstoned" | "duplicate"; existing?: Memory };
 
 export interface MemoryContext {
@@ -107,12 +118,18 @@ export async function rememberMemory(userId: string, input: RememberInput): Prom
     await logMemoryEvent(userId, null, "rejected", { reason: "sensitive_consent_required", kind: input.kind, category: input.category });
     return { ok: false, reason: "sensitive_consent_required" };
   }
-  if (await matchesTombstone(userId, content)) {
+  const exclusions = await keywordExclusionsFor(userId);
+  const tombstoned = await findMatchingTombstones(userId, content, exclusions);
+  if (tombstoned.length > 0 && !input.userConfirmed) {
     await logMemoryEvent(userId, null, "rejected", { reason: "tombstoned", kind: input.kind, category: input.category });
     return { ok: false, reason: "tombstoned" };
   }
   const existing = await findDuplicateMemory(userId, content);
   if (existing) return { ok: false, reason: "duplicate", existing };
+
+  // An explicit, confirmed save of a statement the user once deleted is a
+  // correction: the user has changed their mind, so the tombstones go.
+  const retiredTombstones = await retireTombstones(userId, tombstoned);
 
   const status: Memory["status"] = input.userConfirmed ? "confirmed" : "reported";
   const memory = await insertMemory(userId, {
@@ -127,6 +144,10 @@ export async function rememberMemory(userId: string, input: RememberInput): Prom
     metadata: input.userWords ? { userWords: input.userWords } : {},
   });
   await logMemoryEvent(userId, memory.id, "created", { status, userConfirmed: input.userConfirmed, sourceConversationId: input.sourceConversationId ?? null });
+  if (retiredTombstones > 0) {
+    await logMemoryEvent(userId, memory.id, "corrected", { retiredTombstones, reason: "user_confirmed_supersedes" });
+    return { ok: true, memory, status, retiredTombstones };
+  }
   return { ok: true, memory, status };
 }
 
@@ -157,11 +178,12 @@ export async function forgetMemory(userId: string, hint: { memoryId?: string; te
   }
 
   const deleted: Memory[] = [];
+  const exclusions = targets.length > 0 ? await keywordExclusionsFor(userId) : new Set<string>();
   for (const memory of targets) {
     const removed = await softDeleteMemory(userId, memory.id);
     if (!removed) continue;
-    await createTombstone(userId, memory.content);
-    const suppression = await suppressSummariesForDeletedMemory(userId, memory);
+    await createTombstone(userId, memory.content, exclusions);
+    const suppression = await suppressSummariesForDeletedMemory(userId, memory, exclusions);
     await logMemoryEvent(userId, memory.id, "deleted", { by: hint.memoryId ? "id" : "text", ...suppression });
     deleted.push(removed);
   }
@@ -257,7 +279,8 @@ function trimLine(text: string, max = 240): string {
 
 /**
  * Bounded, relevant context for a new model session. Includes confirmed/reported
- * facts, recent summaries (minus tombstoned content), and — when
+ * facts, recent summaries (minus tombstoned content; sensitive ones only with
+ * sensitive consent), and — when
  * `continueConversationId` is set — the recent transcript of that conversation
  * so a switched model can pick up mid-thought. Never includes `inferred` items.
  */
@@ -293,7 +316,10 @@ export async function buildMemoryContext(
     id: r.memory.id,
   }));
 
-  const summaries = memoryOn ? await listRecentSummaries(userId, 3) : [];
+  // Summaries are gated by sensitive consent exactly like facts.
+  const summaries = memoryOn
+    ? (await listRecentSummaries(userId, sensitiveOk ? 3 : 6)).filter((s) => sensitiveOk || s.sensitivity !== "sensitive").slice(0, 3)
+    : [];
   summaries.forEach((s, index) => {
     items.push({ tier: 3, score: -index, section: "summary", text: `- ${trimLine(s.content, 600)}`, id: s.id });
   });

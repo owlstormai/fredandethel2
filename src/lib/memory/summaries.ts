@@ -4,37 +4,42 @@
  *   - at retrieval time, summaries are filtered sentence-by-sentence through tombstones;
  *   - on delete, `suppressSummariesForDeletedMemory` redacts matching sentences in place
  *     (memory_event "suppressed"), soft-deleting a summary that has nothing left.
+ * Names (the user's preferred name, demo display names) are never keywords for
+ * any of this matching. Summaries carry a sensitivity label (keyword classifier)
+ * so they are gated by sensitive consent exactly like facts.
  */
 import { listTombstones } from "@/lib/database/memories";
 import type { ConversationMessage, Memory, MemoryCategory, MemoryKind, MemorySensitivity } from "@/lib/types";
 import { extractKeywords, keywordOverlap, normalizeText, splitSentences } from "./normalize";
 import { findDuplicateMemory, insertMemory, listSummaryMemories, logMemoryEvent, softDeleteMemory, updateMemory } from "./repository";
-import { anyTombstoneMatches, tombstoneMatchesText, type TombstoneLike } from "./tombstones";
+import { classifySensitivity } from "./sensitivity";
+import { anyTombstoneMatches, keywordExclusionsFor, tombstoneMatchesText, type TombstoneLike } from "./tombstones";
 
 export const SUPPRESS_MIN_SHARED_KEYWORDS = 2;
 
-/** Drops sentences that match any tombstone (equality or keyword overlap). Pure. */
-export function redactTombstonedSentences(text: string, tombstones: readonly TombstoneLike[]): string {
+/** Drops sentences that match any tombstone (equality or keyword overlap). Pure. `exclude` = name words to ignore. */
+export function redactTombstonedSentences(text: string, tombstones: readonly TombstoneLike[], exclude?: ReadonlySet<string>): string {
   if (tombstones.length === 0) return text;
   const kept = splitSentences(text).filter((sentence) => {
-    const keywords = extractKeywords(sentence);
-    return !tombstones.some((t) => tombstoneMatchesText(t, sentence, keywords));
+    const keywords = extractKeywords(sentence, exclude);
+    return !tombstones.some((t) => tombstoneMatchesText(t, sentence, keywords, exclude));
   });
   return kept.join(" ");
 }
 
 /**
  * Drops sentences sharing >= 2 keywords with the deleted memory (>= 1 when the
- * memory itself has only one keyword). Pure; returns the redacted text.
+ * memory itself has only one keyword). Pure; returns the redacted text. Words in
+ * `exclude` (names) never count as shared.
  */
-export function redactSentencesAboutMemory(text: string, deletedContent: string): { text: string; removed: number } {
-  const deletedKeywords = extractKeywords(deletedContent);
+export function redactSentencesAboutMemory(text: string, deletedContent: string, exclude?: ReadonlySet<string>): { text: string; removed: number } {
+  const deletedKeywords = extractKeywords(deletedContent, exclude);
   if (deletedKeywords.length === 0) return { text, removed: 0 };
   const threshold = Math.min(SUPPRESS_MIN_SHARED_KEYWORDS, deletedKeywords.length);
   const deletedNormalized = normalizeText(deletedContent);
   let removed = 0;
   const kept = splitSentences(text).filter((sentence) => {
-    const shared = keywordOverlap(deletedKeywords, extractKeywords(sentence));
+    const shared = keywordOverlap(deletedKeywords, extractKeywords(sentence, exclude));
     const matches = shared >= threshold || normalizeText(sentence) === deletedNormalized;
     if (matches) removed += 1;
     return !matches;
@@ -44,12 +49,12 @@ export function redactSentencesAboutMemory(text: string, deletedContent: string)
 
 /** Recent summaries with tombstoned sentences removed; summaries left empty are skipped. */
 export async function listRecentSummaries(userId: string, limit = 3): Promise<Memory[]> {
-  const [summaries, tombstones] = await Promise.all([listSummaryMemories(userId, limit), listTombstones(userId)]);
+  const [summaries, tombstones, exclude] = await Promise.all([listSummaryMemories(userId, limit), listTombstones(userId), keywordExclusionsFor(userId)]);
   const out: Memory[] = [];
   for (const summary of summaries) {
-    const redacted = redactTombstonedSentences(summary.content, tombstones).trim();
+    const redacted = redactTombstonedSentences(summary.content, tombstones, exclude).trim();
     if (!redacted) continue;
-    if (anyTombstoneMatches(tombstones, redacted)) continue;
+    if (anyTombstoneMatches(tombstones, redacted, exclude)) continue;
     out.push(redacted === summary.content ? summary : { ...summary, content: redacted });
   }
   return out;
@@ -58,12 +63,13 @@ export async function listRecentSummaries(userId: string, limit = 3): Promise<Me
 export async function suppressSummariesForDeletedMemory(
   userId: string,
   memory: Pick<Memory, "id" | "content">,
+  exclude?: ReadonlySet<string>,
 ): Promise<{ redacted: number; removed: number }> {
-  const summaries = await listSummaryMemories(userId, 50);
+  const [summaries, exclusions] = await Promise.all([listSummaryMemories(userId, 50), exclude ?? keywordExclusionsFor(userId)]);
   let redacted = 0;
   let removed = 0;
   for (const summary of summaries) {
-    const result = redactSentencesAboutMemory(summary.content, memory.content);
+    const result = redactSentencesAboutMemory(summary.content, memory.content, exclusions);
     if (result.removed === 0) continue;
     const remaining = result.text.trim();
     if (!remaining) {
@@ -87,21 +93,27 @@ export async function suppressSummariesForDeletedMemory(
   return { redacted, removed };
 }
 
-/** Stores a summary memory after filtering it through tombstones. Null when nothing survives. */
+/**
+ * Stores a summary memory after filtering it through tombstones. Null when
+ * nothing survives. The sensitivity is the caller's, or else the keyword
+ * classifier's verdict on the text (health / finances / grief / family conflict
+ * => "sensitive"), so sensitive summaries are gated like sensitive facts.
+ */
 export async function storeSummaryMemory(
   userId: string,
-  input: { content: string; sourceConversationId: string; modelId?: string },
+  input: { content: string; sourceConversationId: string; modelId?: string; sensitivity?: MemorySensitivity },
 ): Promise<Memory | null> {
-  const tombstones = await listTombstones(userId);
-  const content = redactTombstonedSentences(input.content, tombstones).trim();
-  if (!content || anyTombstoneMatches(tombstones, content)) return null;
+  const [tombstones, exclude] = await Promise.all([listTombstones(userId), keywordExclusionsFor(userId)]);
+  const content = redactTombstonedSentences(input.content, tombstones, exclude).trim();
+  if (!content || anyTombstoneMatches(tombstones, content, exclude)) return null;
+  const sensitivity: MemorySensitivity = input.sensitivity ?? classifySensitivity(content);
   const memory = await insertMemory(userId, {
     kind: "summary",
     category: "other",
     content,
     normalized: normalizeText(content),
     status: "summarized",
-    sensitivity: "normal",
+    sensitivity,
     importance: 2,
     sourceConversationId: input.sourceConversationId,
     metadata: input.modelId ? { modelId: input.modelId } : {},
@@ -129,8 +141,8 @@ export async function storeCandidateMemory(
   options: { sourceConversationId: string; sensitiveAllowed: boolean },
 ): Promise<Memory | null> {
   if (candidate.sensitivity === "sensitive" && !options.sensitiveAllowed) return null;
-  const tombstones = await listTombstones(userId);
-  if (anyTombstoneMatches(tombstones, candidate.content)) {
+  const [tombstones, exclude] = await Promise.all([listTombstones(userId), keywordExclusionsFor(userId)]);
+  if (anyTombstoneMatches(tombstones, candidate.content, exclude)) {
     await logMemoryEvent(userId, null, "rejected", { reason: "tombstoned", status: candidate.status, sourceConversationId: options.sourceConversationId });
     return null;
   }
@@ -183,11 +195,19 @@ export function toThirdPerson(sentence: string, name: string | null): string {
 /**
  * Up to three sentences drawn from the user's longest statements, rewritten
  * without first person. Returns null when the user said nothing substantial.
+ * With `allowSensitive: false` (no sensitive-memory consent) statements the
+ * keyword classifier marks sensitive are dropped before composing.
  */
-export function heuristicSummary(messages: readonly ConversationMessage[], preferredName: string | null): string | null {
+export function heuristicSummary(
+  messages: readonly ConversationMessage[],
+  preferredName: string | null,
+  options: { allowSensitive?: boolean } = {},
+): string | null {
+  const allowSensitive = options.allowSensitive ?? true;
   const statements = messages
     .filter((m) => m.role === "user" && m.content.trim().length >= 12)
     .map((m) => m.content.trim())
+    .filter((s) => allowSensitive || classifySensitivity(s) !== "sensitive")
     .sort((a, b) => b.length - a.length)
     .slice(0, 3);
   if (statements.length === 0) return null;

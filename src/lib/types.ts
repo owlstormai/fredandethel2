@@ -273,7 +273,8 @@ export const ZERO_USAGE: TokenUsage = {
 
 export interface UsageEvent extends TokenUsage {
   id: string;
-  userId: string;
+  /** Null once the account was deleted: spend stays in the global daily cap (migration 002). */
+  userId: string | null;
   conversationId: string | null;
   modelId: string;
   kind: UsageKind;

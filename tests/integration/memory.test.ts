@@ -10,7 +10,7 @@ import { PATCH as patchPreferencesRoute } from "@/app/api/preferences/route";
 import { createSession, getCurrentUser, SESSION_COOKIE } from "@/lib/auth/session";
 import { query } from "@/lib/database/client";
 import { createConversation, appendMessage } from "@/lib/database/conversations";
-import { getMemory, insertMemory, listMemoryEvents, listTombstones } from "@/lib/database/memories";
+import { countTombstones, getMemory, insertMemory, listMemoryEvents, listTombstones } from "@/lib/database/memories";
 import { findUserById } from "@/lib/database/users";
 import { normalizeText } from "@/lib/memory/normalize";
 import {
@@ -22,7 +22,7 @@ import {
   rememberMemory,
   getPreferences,
 } from "@/lib/memory/service";
-import { listRecentSummaries, storeSummaryMemory } from "@/lib/memory/summaries";
+import { listRecentSummaries, storeCandidateMemory, storeSummaryMemory } from "@/lib/memory/summaries";
 import type { MemoriesResponse, MemoryExport, MemoryResponse } from "@/lib/api/contracts";
 import type { User } from "@/lib/types";
 import { cookieJar, createUser, ensureSchema, jsonRequest, params, readJson, teardown, truncateAll } from "./helpers";
@@ -128,7 +128,9 @@ describe("delete -> tombstone -> summary suppression -> no leak", () => {
     expect(after.block).toMatch(/tomatoes/);
     expect(after.memoryIds).not.toContain(saved.memory.id);
 
-    const again = await rememberMemory(user.id, { ...lily, content: "Lily, my granddaughter, plays violin", userConfirmed: true });
+    // An unconfirmed (model / automated) save is still refused; only an explicit
+    // confirmation may override a tombstone — see the "explicit corrections" tests.
+    const again = await rememberMemory(user.id, { ...lily, content: "Lily, my granddaughter, plays violin", userConfirmed: false });
     expect(again).toEqual({ ok: false, reason: "tombstoned" });
     expect(await recallMemories(user.id, "Lily violin")).toEqual([]);
   });
@@ -157,6 +159,75 @@ describe("delete -> tombstone -> summary suppression -> no leak", () => {
     const summaries = await listRecentSummaries(user.id);
     expect(summaries).toHaveLength(1);
     expect(summaries[0].content).toBe("She loves her garden.");
+  });
+});
+
+describe("tombstones vs explicit corrections", () => {
+  const violin = { content: "Granddaughter Lily plays the violin", kind: "relationship" as const, category: "family" as const, sensitivity: "normal" as const };
+  const cello = { ...violin, content: "Granddaughter Lily plays the cello" };
+
+  it("blocks unconfirmed re-saves, but a confirmed save retires the tombstone, logs 'corrected' and is stored as confirmed", async () => {
+    await recordConsent(user.id, "memory", true, "ui");
+    const saved = await rememberMemory(user.id, { ...violin, userConfirmed: true });
+    if (!saved.ok) throw new Error("setup");
+    await forgetMemory(user.id, { memoryId: saved.memory.id });
+    expect(await countTombstones(user.id)).toBe(1);
+
+    const automated = await rememberMemory(user.id, { ...cello, userConfirmed: false });
+    expect(automated).toEqual({ ok: false, reason: "tombstoned" });
+    expect(await countTombstones(user.id)).toBe(1);
+
+    const corrected = await rememberMemory(user.id, { ...cello, userConfirmed: true });
+    expect(corrected.ok).toBe(true);
+    if (!corrected.ok) throw new Error("unreachable");
+    expect(corrected.status).toBe("confirmed");
+    expect(corrected.memory.status).toBe("confirmed");
+    expect(corrected.retiredTombstones).toBe(1);
+    expect(await countTombstones(user.id)).toBe(0);
+    const events = await listMemoryEvents(user.id, corrected.memory.id);
+    expect(events.find((e) => e.event === "corrected")?.payload).toEqual({ retiredTombstones: 1, reason: "user_confirmed_supersedes" });
+    expect((await buildMemoryContext(user.id, {})).block).toMatch(/cello/);
+
+    // Documented behaviour: the new confirmed fact supersedes the old one, so the
+    // retired tombstone no longer blocks a later automated candidate about the OLD
+    // fact. It lands as "reported" (not a duplicate: violin != cello).
+    const conversation = await createConversation({ userId: user.id, mode: "demo", modelKey: "full", modelId: "demo-simulated" });
+    const candidate = await storeCandidateMemory(user.id, { ...violin, status: "reported" }, { sourceConversationId: conversation.id, sensitiveAllowed: false });
+    expect(candidate).not.toBeNull();
+    expect(candidate!.status).toBe("reported");
+  });
+
+  it("automated paths never retire a tombstone: candidates and summaries stay blocked", async () => {
+    await recordConsent(user.id, "memory", true, "ui");
+    const saved = await rememberMemory(user.id, { ...violin, userConfirmed: true });
+    if (!saved.ok) throw new Error("setup");
+    await forgetMemory(user.id, { memoryId: saved.memory.id });
+    const conversation = await createConversation({ userId: user.id, mode: "demo", modelKey: "full", modelId: "demo-simulated" });
+    expect(await storeCandidateMemory(user.id, { ...cello, status: "reported" }, { sourceConversationId: conversation.id, sensitiveAllowed: false })).toBeNull();
+    expect(await storeSummaryMemory(user.id, { content: "Her granddaughter Lily plays the cello.", sourceConversationId: conversation.id })).toBeNull();
+    expect(await countTombstones(user.id)).toBe(1);
+  });
+
+  it("the user's name is never a tombstone keyword: deleting one fact about Margaret leaves an unrelated sentence about her alone", async () => {
+    await recordConsent(user.id, "memory", true, "ui");
+    const tea = await rememberMemory(user.id, { content: "Margaret prefers tea over coffee", kind: "preference", category: "preference", sensitivity: "normal", userConfirmed: true });
+    if (!tea.ok) throw new Error("setup");
+    const conversation = await createConversation({ userId: user.id, mode: "demo", modelKey: "full", modelId: "demo-simulated" });
+    const text = "Margaret talked about her quiet mornings and said she prefers them. Margaret prefers tea over coffee with honey.";
+    const summary = await storeSummaryMemory(user.id, { content: text, sourceConversationId: conversation.id });
+    expect(summary?.content).toBe(text);
+
+    await forgetMemory(user.id, { memoryId: tea.memory.id });
+    const [tombstone] = await listTombstones(user.id);
+    expect(tombstone.keywords).toEqual(["prefer", "tea", "coffee"]); // no "margaret"
+
+    // Only the sentence about tea goes; "Margaret ... prefers" shares one real keyword, not two.
+    expect((await getMemory(user.id, summary!.id))?.content).toBe("Margaret talked about her quiet mornings and said she prefers them.");
+    expect((await listRecentSummaries(user.id)).map((s) => s.content)).toEqual(["Margaret talked about her quiet mornings and said she prefers them."]);
+
+    // Nor does the name make an unrelated statement look tombstoned.
+    const mornings = await rememberMemory(user.id, { content: "Margaret talked about her quiet mornings", kind: "fact", category: "routine", sensitivity: "normal", userConfirmed: false });
+    expect(mornings.ok).toBe(true);
   });
 });
 

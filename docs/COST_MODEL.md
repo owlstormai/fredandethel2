@@ -49,6 +49,11 @@ transcription_cost = seconds_of_user_audio / 60 × 0.017
 search_cost        = calls × 0.01 + text tokens at the text model's rates
 ```
 
+Transcription is estimated from the VAD-committed user speech seconds the client
+reports (`speech` events with `speaker: "user"`, live conversations only); the
+API does not report transcription usage per response, so this is an estimate of
+input audio actually transcribed, not of connected time.
+
 Cached tokens are priced at the cached rate only; they are **not** also charged
 at the full input rate.
 
@@ -86,5 +91,14 @@ next one is refused.
 
 - Costs are computed from token counts the API reports; if a response ends
   without `response.done` (network drop) its usage is lost and the estimate is low.
+- A client that posts no usage telemetry at all is bounded only by the session
+  length (`COMPANION_MAX_SESSION_MINUTES`, API hard limit 60): the caps see only
+  what the browser reports.
+- Caps are enforced at mint time and are not atomic across simultaneous mints:
+  several sessions requested at the same instant can each pass the check.
+- Summaries run only for live conversations with memory on; demo conversations
+  and memory-off sessions never call the text model.
+- Deleting an account keeps its `usage_events` (with `user_id` NULL) so the
+  global daily spend stays correct; per-user figures for that account disappear.
 - Demo mode records durations only; its cost is always $0.
 - No real billing exists in the MVP.

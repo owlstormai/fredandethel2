@@ -76,8 +76,12 @@ export function stem(word: string): string {
   return w;
 }
 
-/** Unique, stemmed, non-stopword keywords (min length 3, digits allowed). Order of first appearance. */
-export function extractKeywords(text: string): string[] {
+/**
+ * Unique, stemmed, non-stopword keywords (min length 3, digits allowed). Order of
+ * first appearance. `exclude` drops extra words (raw or stemmed, lower-case) —
+ * used so a person's name never counts as a tombstone keyword.
+ */
+export function extractKeywords(text: string, exclude?: ReadonlySet<string>): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   for (const token of tokenize(text)) {
@@ -86,9 +90,27 @@ export function extractKeywords(text: string): string[] {
     const stemmed = stem(token);
     if (stemmed.length < 3 && !/^\d+$/.test(stemmed)) continue;
     if (STOPWORDS.has(stemmed)) continue;
+    if (exclude && (exclude.has(token) || exclude.has(stemmed))) continue;
     if (!seen.has(stemmed)) {
       seen.add(stemmed);
       out.push(stemmed);
+    }
+  }
+  return out;
+}
+
+/**
+ * Lower-cased tokens (raw and stemmed) of the given names, for `extractKeywords`'
+ * `exclude`. A name shared by two unrelated sentences ("Margaret prefers tea" /
+ * "Margaret talked about her mornings") must never count as a shared keyword.
+ */
+export function keywordExclusions(names: ReadonlyArray<string | null | undefined>): Set<string> {
+  const out = new Set<string>();
+  for (const name of names) {
+    if (!name) continue;
+    for (const token of tokenize(name)) {
+      out.add(token);
+      out.add(stem(token));
     }
   }
   return out;

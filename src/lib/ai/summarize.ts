@@ -78,14 +78,21 @@ export function buildTranscript(messages: ConversationMessage[], maxChars = MAX_
   return lines.reverse().join("\n");
 }
 
-export function buildSummaryInstructions(preferredName: string | null): string {
+/** Added to the instructions when the user has NOT consented to sensitive memory. */
+export const SENSITIVE_OMISSION_INSTRUCTION =
+  "The user has not agreed to keep sensitive topics. Omit health, finances, grief and family-conflict details entirely — from the summary and from the candidates — even when they were the main point of the conversation; summarize only the rest.";
+
+export function buildSummaryInstructions(preferredName: string | null, allowSensitive = true): string {
   const who = preferredName ? `The user is called ${preferredName}; refer to them by that name.` : "Refer to the user as \"the user\".";
+  const sensitiveRule = allowSensitive
+    ? "Leave out health, money, grief or family-conflict details unless they were the main point of the conversation."
+    : SENSITIVE_OMISSION_INSTRUCTION;
   return [
     "You summarize a spoken conversation between an older adult and their AI voice companion for the companion's private notes.",
     who,
     "Respond with ONLY a JSON object, no prose, no code fences, matching exactly:",
     '{"summary": string, "candidates": [{"content": string, "kind": "fact"|"preference"|"interest"|"relationship"|"story", "category": "identity"|"family"|"friends"|"interest"|"routine"|"preference"|"story"|"health"|"finances"|"grief"|"other", "sensitivity": "normal"|"sensitive", "status": "reported"|"inferred"}]}',
-    "summary: at most 3 sentences, third person, past tense, warm but factual. Leave out health, money, grief or family-conflict details unless they were the main point of the conversation.",
+    `summary: at most 3 sentences, third person, past tense, warm but factual. ${sensitiveRule}`,
     `candidates: up to ${MAX_CANDIDATES} things worth remembering for next time, each one plain sentence in third person. status is "reported" only if the user plainly said it in their own words; anything you deduced is "inferred". Mark health, finances, grief and family conflict as "sensitive". Do not include things the companion said about itself, small talk, or anything the user asked to forget.`,
     "If the transcript is empty or trivial, return an empty candidates array and a one-sentence summary.",
   ].join("\n");
@@ -140,7 +147,7 @@ export async function summarizeConversation(
   userId: string,
   conversationId: string,
   messages: ConversationMessage[],
-  options: { tombstoneKeywords: string[]; preferredName: string | null },
+  options: { tombstoneKeywords: string[]; preferredName: string | null; allowSensitive?: boolean },
 ): Promise<SummaryResult | null> {
   if (!isLiveConfigured()) return null;
 
@@ -152,7 +159,7 @@ export async function summarizeConversation(
   try {
     const response = await responsesCreate({
       model: modelId,
-      instructions: buildSummaryInstructions(options.preferredName),
+      instructions: buildSummaryInstructions(options.preferredName, options.allowSensitive ?? true),
       input: transcript,
       max_output_tokens: 900,
       ...(/^gpt-(5|6)/.test(modelId) ? { reasoning: { effort: "low" as const } } : {}),

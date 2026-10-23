@@ -29,7 +29,7 @@ amplitude and VAD can be exercised without a human.
 | 4 | Pauses don't cause premature cut-off | Session config uses `semantic_vad` with `eagerness: low` for "patient" (unit test). Live: fake-mic file has a 2 s mid-utterance pause; test asserts one user turn, not two. |
 | 5 | Consent → fact saved → recalled next session | Integration: `memory.test.ts`; e2e `memory.spec.ts` (demo): say "remember that…", end, start new session, assistant references it / memory page lists it. |
 | 6 | Model switch preserves app-owned context | Unit: `buildMemoryContext` with `continueConversationId` includes recent transcript; e2e `talk.spec.ts` switch mid-conversation shows the switch note and continues the same conversation. |
-| 7 | Inspect/correct/delete; deleted facts stay deleted | Integration: tombstone + summary suppression + re-save rejection; e2e `memory.spec.ts`. |
+| 7 | Inspect/correct/delete; deleted facts stay deleted | Integration: tombstone + summary suppression + unconfirmed re-save rejection + confirmed re-add supersedes; e2e `memory.spec.ts`. |
 | 8 | Humor level changes behavior; serious topics serious | Unit: instructions contain level-specific rules; demo brain tests (serious keywords drop humor). Live: manual script in `PREVIEW.md`. |
 | 9 | Respectful disagreement | Unit: instructions include disagreement rules; demo brain corrects listed falsehoods. Live: manual script. |
 | 10 | Secrets not in browser; isolation | `scripts/check-secrets.sh` greps `.next/static`; integration `isolation.test.ts`. |
@@ -51,7 +51,7 @@ via Playwright 1.64, no `OPENAI_API_KEY`).
 |---|---|---|
 | Typecheck | `npm run typecheck` | pass |
 | Lint | `npm run lint` | pass, 0 problems |
-| Unit + integration | `npm run test` | **305 passed / 0 failed** (40 files; 45 integration tests against real Postgres) |
+| Unit + integration | `npm run test` | **333 passed / 0 failed** (42 files; integration tests run against real Postgres) |
 | Production build | `npm run build` | pass (32 routes) |
 | Secrets in client bundle | `npm run check:secrets` | PASS: no secrets found in `.next/static` |
 | End-to-end, demo mode | `E2E_FAKE_AUDIO=tests/fixtures/fake-mic.wav npm run test:e2e` | **17 passed / 0 failed / 2 skipped** |
@@ -64,7 +64,8 @@ demo conversation start with greeting and *Simulated* label; orb state transitio
 through speaking and back to idle, Stop interrupts; typed input gets a reply and both
 sides are transcribed; model switch mid-conversation keeps the transcript and shows the
 switch note; ending shows the summary panel; remember → listed on `/memory` → delete →
-tombstone count rises → re-saving the same fact is refused; inline correction of a
+tombstone count rises → the fact stays out of the list, and an explicit re-add by the
+user (POST `/api/memories`) succeeds and retires the tombstone; inline correction of a
 memory; export contains only the user's rows; cross-user access to memories and
 conversations returns 404 and anonymous access returns 401; settings persist across
 reload and theme attributes apply; orb `data-mic-level` rises during fake-mic speech

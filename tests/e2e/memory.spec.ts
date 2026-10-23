@@ -6,7 +6,7 @@ test.describe("memory flows (demo profile, memory consent seeded)", () => {
     await loginDemo(page, "walter");
   });
 
-  test("remember → listed → delete → tombstone blocks re-saving", async ({ page }) => {
+  test("remember → listed → delete → deleted facts stay deleted until the user explicitly re-adds them", async ({ page }) => {
     const fact = `I take my coffee with two sugars ${Date.now()}`;
     await startTalking(page);
     const reply = await say(page, `Please remember that ${fact}.`);
@@ -22,13 +22,23 @@ test.describe("memory flows (demo profile, memory consent seeded)", () => {
     await expect(item).toHaveCount(0);
     await expect(page.getByText(/asked me to forget/i)).toContainText(/[1-9]/);
 
-    // Re-saving the same fact via the API is rejected because of the tombstone.
+    // The fact is gone from the list and a tombstone records the deletion.
+    const afterDelete = (await (await page.request.get("/api/memories")).json()) as { memories: Array<{ content: string }>; tombstones: number };
+    expect(JSON.stringify(afterDelete.memories)).not.toContain("two sugars");
+    expect(afterDelete.tombstones).toBeGreaterThanOrEqual(1);
+
+    // Automated restores (summaries, unconfirmed model saves) stay blocked by the
+    // tombstone and cannot be driven from e2e. An EXPLICIT re-add by the user —
+    // POST /api/memories is always a confirmed save — supersedes it: the memory is
+    // created and the tombstone count drops by one.
     const res = await page.request.post("/api/memories", {
       data: { content: fact, kind: "preference", category: "preference" },
     });
-    expect(res.status()).toBeGreaterThanOrEqual(400);
-    const list = await (await page.request.get("/api/memories")).json();
-    expect(JSON.stringify(list.memories)).not.toContain("two sugars");
+    expect(res.status()).toBe(201);
+    const afterReAdd = (await (await page.request.get("/api/memories")).json()) as { memories: Array<{ content: string; status: string }>; tombstones: number };
+    const restored = afterReAdd.memories.find((m) => m.content.includes("two sugars"));
+    expect(restored?.status).toBe("confirmed");
+    expect(afterReAdd.tombstones).toBe(afterDelete.tombstones - 1);
   });
 
   test("correct a memory and confirm a reported one", async ({ page }) => {

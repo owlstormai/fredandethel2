@@ -3,7 +3,7 @@ import type { ConversationMessage } from "@/lib/types";
 
 vi.mock("@/lib/usage/tracker", () => ({ recordUsage: vi.fn() }));
 
-import { buildTranscript, keywordsOf, matchesTombstones, parseSummaryJson, summarizeConversation } from "@/lib/ai/summarize";
+import { buildSummaryInstructions, buildTranscript, keywordsOf, matchesTombstones, parseSummaryJson, SENSITIVE_OMISSION_INSTRUCTION, summarizeConversation } from "@/lib/ai/summarize";
 import { recordUsage } from "@/lib/usage/tracker";
 
 const KEY = "sk-test-0123456789abcdef0123456789";
@@ -140,11 +140,26 @@ describe("summarizeConversation", () => {
     expect(body.input).not.toContain("ignored");
     expect(body.instructions).toContain("ONLY a JSON object");
     expect(body.instructions).toContain("Margaret");
+    expect(body.instructions).toContain("unless they were the main point of the conversation"); // allowSensitive defaults to true
+    expect(body.instructions).not.toContain(SENSITIVE_OMISSION_INSTRUCTION);
     expect(body.tools).toBeUndefined();
 
     expect(recordUsage).toHaveBeenCalledWith(
       expect.objectContaining({ userId, conversationId, modelId: "gpt-6-luna", kind: "summary", inputTextTokens: 400, outputTextTokens: 120 }),
     );
+  });
+
+  it("tells the model to omit health, finances, grief and family-conflict details entirely when allowSensitive is false", async () => {
+    vi.stubEnv("OPENAI_API_KEY", KEY);
+    fetchMock.mockResolvedValueOnce(new Response(JSON.stringify(responsesBody(JSON.stringify({ summary: "Margaret talked about her garden.", candidates: [] }))), { status: 200 }));
+    const result = await summarizeConversation(userId, conversationId, messages, { tombstoneKeywords: [], preferredName: "Margaret", allowSensitive: false });
+    expect(result?.summary).toBe("Margaret talked about her garden.");
+    const body = JSON.parse(fetchMock.mock.calls[0][1]?.body as string);
+    expect(body.instructions).toContain(SENSITIVE_OMISSION_INSTRUCTION);
+    expect(body.instructions).toMatch(/Omit health, finances, grief and family-conflict details entirely/);
+    expect(body.instructions).not.toContain("unless they were the main point of the conversation");
+    expect(buildSummaryInstructions("Margaret", true)).not.toContain(SENSITIVE_OMISSION_INSTRUCTION);
+    expect(buildSummaryInstructions(null, false)).toContain(SENSITIVE_OMISSION_INSTRUCTION);
   });
 
   it("returns null (never throws) on unparseable output or upstream failure", async () => {

@@ -7,7 +7,7 @@ import { isUuid } from "@/lib/api/ids";
 import type { z } from "zod";
 import type { conversationEventSchema, createConversationSchema, EndConversationResponse } from "@/lib/api/contracts";
 import { HttpError } from "@/lib/api/respond";
-import { getModelId, isLiveConfigured } from "@/lib/ai/models";
+import { getModelId, getTranscriptionModelId, isLiveConfigured } from "@/lib/ai/models";
 import { summarizeConversation, type SummaryCandidate } from "@/lib/ai/summarize";
 import {
   addSpeechSeconds,
@@ -104,6 +104,21 @@ export async function recordConversationEvents(
       case "speech": {
         await addSpeechSeconds(userId, conversationId, event.speaker, event.seconds);
         stored += 1;
+        // Input transcription is billed per minute of the user's audio; the client
+        // reports VAD-committed speech seconds. Demo conversations cost nothing.
+        if (event.speaker === "user" && conversation.mode === "live" && event.seconds > 0) {
+          try {
+            await recordUsage({
+              userId,
+              conversationId,
+              modelId: getTranscriptionModelId(),
+              kind: "transcription",
+              durationSeconds: event.seconds,
+            });
+          } catch (error) {
+            logError("usage_record_failed", error);
+          }
+        }
         break;
       }
       case "connected": {
@@ -122,11 +137,16 @@ export async function recordConversationEvents(
 }
 
 /**
- * Ends a conversation and produces its summary. Uses the AI summarizer when it
- * is configured and succeeds; otherwise a heuristic summary (no API). The summary
- * is stored as a "summary" memory ONLY when memory is enabled, after filtering
- * through tombstones. Summarizer candidates keep their own labels (reported /
- * inferred); inferred ones are returned as suggestions and never injected.
+ * Ends a conversation and produces its summary. The paid AI summarizer runs ONLY
+ * for a live conversation whose user has memory on (a demo conversation, or one
+ * whose summary could not be stored anyway, never spends money); otherwise, or
+ * when it fails, a heuristic summary (no API). The summary is stored as a
+ * "summary" memory ONLY when memory is enabled, after filtering through
+ * tombstones, labelled sensitive when it carries health / finances / grief /
+ * family-conflict signals. Without sensitive consent the summarizer is told to
+ * omit those details and the heuristic drops sensitive statements. Summarizer
+ * candidates keep their own labels (reported / inferred); inferred ones are
+ * returned as suggestions and never injected.
  * Idempotent: ending an ended conversation returns its stored summary.
  */
 export async function finishConversation(userId: string, conversationId: string): Promise<EndConversationResponse> {
@@ -148,17 +168,23 @@ export async function finishConversation(userId: string, conversationId: string)
   let summaryText: string | null = null;
   let modelId: string | undefined;
   let candidates: SummaryCandidate[] = [];
-  try {
-    const result = await summarizeConversation(userId, conversationId, messages, { tombstoneKeywords, preferredName: profile.preferredName });
-    if (result) {
-      summaryText = result.summary;
-      modelId = result.modelId;
-      candidates = result.candidates;
+  if (memoryOn && existing.mode === "live") {
+    try {
+      const result = await summarizeConversation(userId, conversationId, messages, {
+        tombstoneKeywords,
+        preferredName: profile.preferredName,
+        allowSensitive: sensitiveOn,
+      });
+      if (result) {
+        summaryText = result.summary;
+        modelId = result.modelId;
+        candidates = result.candidates;
+      }
+    } catch (error) {
+      logError("summarize_failed", error);
     }
-  } catch (error) {
-    logError("summarize_failed", error);
   }
-  if (!summaryText) summaryText = heuristicSummary(messages, profile.preferredName);
+  if (!summaryText) summaryText = heuristicSummary(messages, profile.preferredName, { allowSensitive: sensitiveOn });
 
   let summary: Memory | null = null;
   const suggestedMemories: Memory[] = [];

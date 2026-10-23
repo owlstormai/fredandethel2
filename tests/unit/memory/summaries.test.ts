@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { keywordExclusions } from "@/lib/memory/normalize";
 import { heuristicSummary, redactSentencesAboutMemory, redactTombstonedSentences, toThirdPerson } from "@/lib/memory/summaries";
 import type { ConversationMessage } from "@/lib/types";
 
@@ -22,6 +23,13 @@ describe("redactSentencesAboutMemory", () => {
     const result = redactSentencesAboutMemory("Lily plays violin. Lily's violin recital is Sunday.", "Lily plays the violin");
     expect(result.removed).toBe(2);
     expect(result.text).toBe("");
+  });
+  it("ignores excluded name words, so a shared name is not a shared keyword", () => {
+    const text = "Margaret talked about her quiet mornings and said she prefers them. Margaret prefers tea over coffee.";
+    expect(redactSentencesAboutMemory(text, "Margaret prefers tea over coffee").removed).toBe(2);
+    const excluded = redactSentencesAboutMemory(text, "Margaret prefers tea over coffee", keywordExclusions(["Margaret"]));
+    expect(excluded.removed).toBe(1);
+    expect(excluded.text).toBe("Margaret talked about her quiet mornings and said she prefers them.");
   });
 });
 
@@ -70,6 +78,19 @@ describe("heuristicSummary", () => {
   });
   it("returns null when the user said nothing substantial", () => {
     expect(heuristicSummary([msg("user", "hi", 1), msg("assistant", "Hello!", 2)], null)).toBeNull();
+  });
+  it("drops sensitive statements when sensitive memory is not allowed; keeps them otherwise", () => {
+    const messages = [
+      msg("user", "I spent the whole morning in my garden pulling weeds.", 1),
+      msg("user", "I was diagnosed with cancer last week and I'm frightened.", 2),
+      msg("user", "My daughter and I haven't spoken since the argument at Easter.", 3),
+    ];
+    const guarded = heuristicSummary(messages, "Margaret", { allowSensitive: false });
+    expect(guarded).toMatch(/garden/);
+    expect(guarded).not.toMatch(/cancer|haven't spoken/);
+    expect(heuristicSummary(messages.slice(1), "Margaret", { allowSensitive: false })).toBeNull();
+    expect(heuristicSummary(messages, "Margaret", { allowSensitive: true })).toMatch(/cancer/);
+    expect(heuristicSummary(messages, "Margaret")).toMatch(/cancer/);
   });
   it("uses 'The user' when no name is known", () => {
     expect(toThirdPerson("I love my garden and I'm proud of it", null)).toBe("The user love their garden and The user is proud of it");

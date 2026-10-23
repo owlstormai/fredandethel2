@@ -88,9 +88,11 @@ and the developer panel.
 - Demo voice input uses the browser's speech recognition, which exists only in
   Chromium-based browsers; elsewhere the demo is typed. Demo voice output uses browser
   speech synthesis when voices are available.
-- Deleting a memory writes a keyword tombstone. A very generic deleted fact (for example
-  "likes tea") can block similar future facts until it is cleared; there is no
-  clear-tombstone UI yet.
+- Deleting a memory writes a keyword tombstone (the user's name is never a keyword). A
+  very generic deleted fact (for example "likes tea") can block similar future facts
+  from being saved automatically. The user can always override it on purpose: adding
+  the fact on the memory page, or asking the companion to remember it, retires the
+  tombstone. There is no separate clear-tombstone UI.
 - Rate limits are per server instance; there is no email verification or password reset;
   the CSP header is basic. See `docs/SECURITY.md` for the production checklist.
 - Model switching rehydrates application-owned context (memories, summaries, recent

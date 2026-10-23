@@ -1,4 +1,5 @@
 "use client";
+import { useEffect, useId, useRef } from "react";
 import type { ConsentScope } from "@/lib/types";
 import { Button, Card } from "./integration";
 
@@ -31,18 +32,31 @@ export interface ConsentCardProps {
 
 export function ConsentCard({ scope, onYes, onNotNow, busy }: ConsentCardProps) {
   const copy = COPY[scope];
+  const headingId = useId();
+  const yesRef = useRef<HTMLButtonElement>(null);
+
+  // A consent question deserves keyboard focus when it appears — but never
+  // steal it from someone mid-sentence in the text box.
+  useEffect(() => {
+    const active = document.activeElement;
+    const typing = active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement;
+    if (!typing) yesRef.current?.focus();
+  }, []);
+
   return (
     <Card
       as="section"
+      role="dialog"
+      aria-labelledby={headingId}
       data-testid="consent-card"
       aria-live="polite"
-      title={copy.title}
+      title={<span id={headingId}>{copy.title}</span>}
       description={copy.body}
       padding="md"
       className="w-full border-accent/40 animate-rise-in"
     >
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button size="xl" variant="primary" data-testid="consent-yes" onClick={onYes} loading={busy} className="flex-1">
+        <Button ref={yesRef} size="xl" variant="primary" data-testid="consent-yes" onClick={onYes} loading={busy} className="flex-1">
           {copy.yes}
         </Button>
         <Button size="xl" variant="secondary" data-testid="consent-no" onClick={onNotNow} disabled={busy} className="flex-1">

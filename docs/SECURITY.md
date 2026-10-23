@@ -64,12 +64,22 @@ injection immediately; existing memories remain visible and deletable.
   API refuses to promote a label except through an explicit user confirmation.
   `inferred` items are never injected into a model session.
 - Deleting a memory soft-deletes it, writes a **tombstone** (normalized text and
-  keywords), redacts matching sentences from existing summaries, and causes any
-  later attempt to save a matching fact (by the model or by summarization) to be
-  rejected. See `docs/DECISIONS.md`.
+  keywords — never the user's name), redacts matching sentences from existing
+  summaries, and causes any later attempt to save a matching fact by the model
+  (unconfirmed) or by summarization to be rejected. **Only an explicit user
+  action can override a tombstone**: a confirmed save (the memory page, or a
+  statement the user explicitly asked to have remembered) retires the matching
+  tombstones and is logged as `corrected`. Summarization and unconfirmed model
+  saves never can. See `docs/DECISIONS.md`.
+- Summaries are labelled `sensitive` when they carry health, finances, grief or
+  family-conflict signals and are injected only with `sensitive_memory` consent;
+  without it the summarizer is instructed to omit such details and the heuristic
+  summary drops them.
 - Export: `GET /api/memory/export` returns every row that belongs to the user.
 - Delete account: `DELETE /api/account` removes the user row; all user data
-  cascades. Deleted users cannot sign in.
+  cascades. The exception is `usage_events`: those rows hold no content (model id,
+  token counts, durations, estimated cost) and are kept with `user_id` set to
+  NULL so the operator's daily cost cap stays accurate. Deleted users cannot sign in.
 
 ## Data in transit and at rest
 

@@ -14,8 +14,9 @@ import { HttpError } from "@/lib/api/respond";
 import { COMPANION_VOICES } from "@/lib/ai/models";
 import { appendMessage, getConversation, mergeConversationMetadata } from "@/lib/database/conversations";
 import { extractKeywords, hashText, normalizeText } from "@/lib/memory/normalize";
+import { inferMemoryShape } from "@/lib/memory/sensitivity";
 import * as memoryService from "@/lib/memory/service";
-import type { HumorLevel, Memory, MemoryCategory, MemoryKind, MemorySensitivity, Preferences, Profile } from "@/lib/types";
+import type { HumorLevel, Memory, MemoryCategory, Preferences, Profile } from "@/lib/types";
 
 export const GREETING_INPUT = "__greeting__";
 
@@ -177,36 +178,11 @@ const HELLO_RE = /^\s*(hi|hello|hey|good (morning|afternoon|evening)|howdy)\b[^?
 const HOW_ARE_YOU_RE = /\bhow (are|r) (you|ya)( doing| today)?\b|\bhow('?s| is) it going\b|\bhow have you been\b/i;
 
 // ---------------------------------------------------------------------------
-// Memory shape inference for "remember that ..."
+// Memory shape inference for "remember that ..." — shared with the summary
+// pipeline, so it lives in the memory layer (re-exported for the unit tests).
 // ---------------------------------------------------------------------------
 
-export interface MemoryShape {
-  kind: Exclude<MemoryKind, "summary">;
-  category: MemoryCategory;
-  sensitivity: MemorySensitivity;
-}
-
-const SHAPE_RULES: Array<{ re: RegExp; category: MemoryCategory }> = [
-  { re: /\b(died|passed away|funeral|late (wife|husband)|widow|grie|mourn|lost my)\b/i, category: "grief" },
-  { re: /\b(doctor|nurse|hospital|pain|medication|pills?|prescription|surgery|blood pressure|diabet|arthritis|knee|hip|heart|cancer|diagnos|appointment with|dentist|hearing aid|cane|walker)\b/i, category: "health" },
-  { re: /\b(money|bank|pension|bills?|rent|mortgage|savings|debt|afford|budget|social security|insurance|taxes)\b/i, category: "finances" },
-  { re: /\b(granddaughter|grandson|grandchild|grandkids?|daughter|son|wife|husband|sister|brother|mother|father|mom|dad|niece|nephew|cousin|kids?|children|grandma|grandpa|family)\b/i, category: "family" },
-  { re: /\b(friend|neighbou?r|buddy|pal|church group|club|bridge group)\b/i, category: "friends" },
-  { re: /\b(every (morning|day|evening|night|week|sunday|saturday)|each morning|usually|always|routine|breakfast|lunch|dinner at|bedtime|wake up at|walk every)\b/i, category: "routine" },
-  { re: /\b(prefer|favou?rite|favorite|rather|instead of|can'?t stand|don'?t like|hate|love it when|never call me|call me)\b/i, category: "preference" },
-  { re: /\b(love|enjoy|like to|hobby|garden|crossword|puzzle|jazz|music|records?|woodwork|fishing|golf|knitting|quilting|baking|cooking|reading|books?|painting|birds?|walking|dancing|church|choir|chess|cards|bingo|baseball|football|browns|guardians)\b/i, category: "interest" },
-];
-
-export function inferMemoryShape(content: string): MemoryShape {
-  const category = SHAPE_RULES.find((r) => r.re.test(content))?.category ?? "other";
-  const sensitivity: MemorySensitivity = category === "health" || category === "finances" || category === "grief" ? "sensitive" : "normal";
-  let kind: MemoryShape["kind"] = "fact";
-  if (category === "interest") kind = "interest";
-  else if (category === "family" || category === "friends") kind = "relationship";
-  else if (category === "preference") kind = "preference";
-  else if (content.length > 120) kind = "story";
-  return { kind, category, sensitivity };
-}
+export { inferMemoryShape, type MemoryShape } from "@/lib/memory/sensitivity";
 
 // ---------------------------------------------------------------------------
 // Phrasing helpers
@@ -831,7 +807,9 @@ async function respond(turn: Turn): Promise<{ reply: string; next: DemoState }> 
     const result = await remember(turn, rememberContent, text, true);
     if (result.ok) {
       const ack = pick(["Got it", "Noted", "Saved", "I'll remember that"], turn.hash);
-      return { reply: `${ack} — ${spoken(result.memory.content)}. ${pick(["Anything else I should know about that?", "Tell me more about it, if you like.", "What else is going on?"], turn.hash, 1)}`, next };
+      // Honest about the override: an explicit "remember" supersedes an earlier "forget".
+      const superseded = result.retiredTombstones ? " You'd asked me to forget something like this before; since you've asked again, I've kept this version." : "";
+      return { reply: `${ack} — ${spoken(result.memory.content)}.${superseded} ${pick(["Anything else I should know about that?", "Tell me more about it, if you like.", "What else is going on?"], turn.hash, 1)}`, next };
     }
     if (result.reason === "sensitive_consent_required") {
       turn.uiActions.push({ type: "consent_prompt", scope: "sensitive_memory" });

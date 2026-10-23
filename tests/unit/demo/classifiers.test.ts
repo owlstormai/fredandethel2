@@ -81,6 +81,7 @@ describe("memory commands", () => {
     expect(inferMemoryShape("my doctor changed my blood pressure pills")).toMatchObject({ category: "health", sensitivity: "sensitive" });
     expect(inferMemoryShape("I prefer tea over coffee")).toMatchObject({ kind: "preference", category: "preference" });
     expect(inferMemoryShape("the car is blue")).toEqual({ kind: "fact", category: "other", sensitivity: "normal" });
+    expect(inferMemoryShape("my daughter and I haven't spoken since the argument")).toMatchObject({ category: "family", sensitivity: "sensitive" });
   });
   it("turns a mentioned interest into a third-person note", () => {
     expect(toThirdPersonInterest("I love working in my garden")).toBe("Enjoys working in their garden");
