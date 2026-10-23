@@ -446,3 +446,57 @@ describe("mapRealtimeUsage", () => {
     ).toMatchObject({ cachedTextTokens: 10, cachedAudioTokens: 30 });
   });
 });
+
+describe("OpenAIRealtimeAdapter function-call round trip (parallel calls, name fallback)", () => {
+  let h: Harness;
+  let t: FakeTransport;
+  beforeEach(async () => {
+    h = harness();
+    await h.connect();
+    t = h.current();
+    h.events.length = 0;
+  });
+
+  it("sends one response.create only after EVERY pending call of the turn has its output", async () => {
+    // Reasoning realtime models may call several tools in one response (parallel_tool_calls).
+    // A response.create per call would race the active response; API_VERIFICATION §5: outputs first, then response.create.
+    let resolveFirst!: (value: { output: string }) => void;
+    h.tools.dispatch.mockImplementationOnce(() => new Promise<{ output: string }>((r) => (resolveFirst = r)));
+    h.tools.dispatch.mockResolvedValueOnce({ output: "Consent recorded (memory: yes)." });
+    t.server({ type: "response.created", response: { id: "r1", status: "in_progress" } });
+    t.server({ type: "response.function_call_arguments.done", response_id: "r1", item_id: "fc1", output_index: 0, call_id: "call_a", name: "set_preferred_name", arguments: '{"name":"Margaret"}' });
+    t.server({ type: "response.function_call_arguments.done", response_id: "r1", item_id: "fc2", output_index: 1, call_id: "call_b", name: "record_consent", arguments: '{"scope":"memory","granted":true,"user_words":"yes"}' });
+    await flush();
+    // second call finished first: its output is sent, but no response.create yet
+    expect(t.sent).toEqual([{ type: "conversation.item.create", item: { type: "function_call_output", call_id: "call_b", output: "Consent recorded (memory: yes)." } }]);
+    resolveFirst({ output: "Name set to Margaret." });
+    await flush();
+    expect(t.sentTypes()).toEqual(["conversation.item.create", "conversation.item.create", "response.create"]);
+    expect((t.sent[1] as { item: { call_id: string } }).item.call_id).toBe("call_a");
+    expect(h.types().filter((x) => x === "tool_result")).toHaveLength(2);
+  });
+
+  it("still sends response.create after a single call (unchanged behaviour)", async () => {
+    t.server({ type: "response.function_call_arguments.done", response_id: "r1", item_id: "fc1", output_index: 0, call_id: "call_a", name: "end_conversation", arguments: "{}" });
+    await flush();
+    expect(t.sentTypes()).toEqual(["conversation.item.create", "response.create"]);
+  });
+
+  it("resolves the function name from response.output_item.added when arguments.done lacks `name`", async () => {
+    t.server({ type: "response.created", response: { id: "r1", status: "in_progress" } });
+    t.server({ type: "response.output_item.added", response_id: "r1", output_index: 0, item: { id: "fc1", type: "function_call", name: "remember", call_id: "call_a", arguments: "" } });
+    t.server({ type: "response.function_call_arguments.done", response_id: "r1", item_id: "fc1", output_index: 0, call_id: "call_a", arguments: '{"content":"Likes roses"}' });
+    await flush();
+    expect(h.tools.dispatch).toHaveBeenCalledWith("conv-1", { callId: "call_a", name: "remember", arguments: { content: "Likes roses" } });
+    // an explicit `name` always wins over the tracked one
+    t.server({ type: "response.output_item.added", response_id: "r1", output_index: 1, item: { id: "fc2", type: "function_call", name: "forget", call_id: "call_b", arguments: "" } });
+    t.server({ type: "response.function_call_arguments.done", response_id: "r1", item_id: "fc2", output_index: 1, call_id: "call_b", name: "recall_memories", arguments: '{"query":"roses"}' });
+    await flush();
+    expect(h.tools.dispatch).toHaveBeenLastCalledWith("conv-1", { callId: "call_b", name: "recall_memories", arguments: { query: "roses" } });
+    // message items are ignored by the tracker
+    t.server({ type: "response.output_item.added", response_id: "r1", output_index: 2, item: { id: "msg1", type: "message", role: "assistant" } });
+    t.server({ type: "response.function_call_arguments.done", response_id: "r1", item_id: "msg1", output_index: 2, call_id: "call_c", arguments: "{}" });
+    await flush();
+    expect(h.tools.dispatch).toHaveBeenLastCalledWith("conv-1", { callId: "call_c", name: "", arguments: {} });
+  });
+});

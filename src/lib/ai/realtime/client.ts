@@ -82,6 +82,8 @@ export class RealtimeWebRTCClient implements RealtimeTransport {
   private readonly fetchImpl: typeof fetch | undefined;
   private readonly rtcConfiguration: RTCConfiguration | undefined;
   private readonly openTimeoutMs: number;
+  /** Rejects the in-flight waitForOpen() promise; set while connecting, cleared once it settles. */
+  private settlePendingOpen: ((error: RealtimeConnectError) => void) | null = null;
 
   constructor(options: RealtimeWebRTCClientOptions = {}) {
     this.PeerConnectionCtor =
@@ -142,6 +144,10 @@ export class RealtimeWebRTCClient implements RealtimeTransport {
     };
 
     const opened = this.waitForOpen(dc, pc, signal);
+    // If connect() fails before `await opened` (SDP refused, network), the promise
+    // still settles later (close() or the open timeout); this keeps that from
+    // surfacing as an unhandled rejection. `await opened` below still sees it.
+    opened.catch(() => {});
 
     try {
       const offer = await pc.createOffer();
@@ -205,6 +211,8 @@ export class RealtimeWebRTCClient implements RealtimeTransport {
   close(): void {
     this._state = "closed";
     this.queue = [];
+    // A connect() still waiting for the channel must fail now, not after the open timeout.
+    this.settlePendingOpen?.(new RealtimeConnectError("aborted", "Connection cancelled."));
     if (this.dc) {
       try {
         this.dc.onclose = null;
@@ -254,8 +262,10 @@ export class RealtimeWebRTCClient implements RealtimeTransport {
         settled = true;
         clearTimeout(timer);
         signal?.removeEventListener("abort", onAbort);
+        this.settlePendingOpen = null;
         fn();
       };
+      this.settlePendingOpen = (error) => finish(() => reject(error));
       const timer = setTimeout(
         () => finish(() => reject(new RealtimeConnectError("timeout", "The voice connection took too long to open."))),
         this.openTimeoutMs,

@@ -214,3 +214,27 @@ describe("dispatchTool", () => {
     await expect(call("end_conversation", {})).rejects.toMatchObject({ status: 429, code: "rate_limited" });
   });
 });
+
+describe("dispatchTool keeps paid search out of demo", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetRateLimits();
+  });
+
+  it("refuses search_web for a demo user without calling the search service", async () => {
+    vi.mocked(getConversation).mockResolvedValue({ ...conversation, mode: "demo" } as Conversation);
+    const demoUser: User = { ...user, email: null, isDemo: true, demoSlug: "margaret" };
+    const result = await dispatchTool(demoUser, { conversationId, callId: "call_1", name: "search_web", arguments: { query: "news today" } });
+    expect(result).toEqual({ output: TOOL_OUTPUTS.searchNotLive });
+    expect(searchWeb).not.toHaveBeenCalled();
+    expect(appendMessage).not.toHaveBeenCalled();
+  });
+
+  it("refuses search_web on a demo-mode conversation even for a regular user, but other tools still run", async () => {
+    vi.mocked(getConversation).mockResolvedValue({ ...conversation, mode: "demo" } as Conversation);
+    expect(await call("search_web", { query: "news today" })).toEqual({ output: TOOL_OUTPUTS.searchNotLive });
+    expect(searchWeb).not.toHaveBeenCalled();
+    vi.mocked(setHumorLevel).mockResolvedValue(undefined);
+    expect(await call("set_humor_level", { level: "off" })).toEqual({ output: "Humor level set to off.", uiAction: { type: "humor_changed", level: "off" } });
+  });
+});

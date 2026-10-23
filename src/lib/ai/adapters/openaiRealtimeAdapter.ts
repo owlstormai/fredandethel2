@@ -10,7 +10,10 @@
  *   - barge-in: the moment `input_audio_buffer.speech_started` arrives while
  *     the assistant is audible we send `response.cancel` + `output_audio_buffer.clear`
  *     (the server also truncates automatically over WebRTC; we do not wait for it)
- *   - function calls -> ToolDispatcher -> function_call_output + response.create
+ *   - function calls -> ToolDispatcher -> function_call_output per call, then ONE
+ *     response.create once every call of that turn has its output (reasoning
+ *     models may emit several function calls in one response; a response.create
+ *     per call would race the active response and drop outputs)
  *   - reconnect with app-owned context rehydration (continueConversationId)
  *   - session max-duration timer with a 2-minute warning
  *
@@ -137,6 +140,8 @@ export class OpenAIRealtimeAdapter implements ConversationAdapter {
   private userTranscripts = new Map<string, string>();
   private greeted = false;
   private pendingToolCalls = 0;
+  /** item_id -> function name, from response.output_item.added (fallback when arguments.done lacks `name`). */
+  private functionCallNames = new Map<string, string>();
 
   // timers
   private disconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -384,6 +389,7 @@ export class OpenAIRealtimeAdapter implements ConversationAdapter {
     this.assistantTranscripts.clear();
     this.userTranscripts.clear();
     this.pendingToolCalls = 0;
+    this.functionCallNames.clear();
   }
 
   // ---------------------------------------------------------------------------
@@ -547,11 +553,24 @@ export class OpenAIRealtimeAdapter implements ConversationAdapter {
         this.userTranscripts.delete((event as { item_id: string }).item_id);
         return;
 
+      case "response.output_item.added":
+      case "response.output_item.done": {
+        // Remember the function name per item so a `function_call_arguments.done`
+        // without `name` (schema drift) still dispatches the right tool.
+        const item = (event as { item?: { id?: unknown; type?: unknown; name?: unknown } }).item;
+        if (item?.type === "function_call" && typeof item.id === "string" && typeof item.name === "string") {
+          this.functionCallNames.set(item.id, item.name);
+        }
+        return;
+      }
+
       case "response.function_call_arguments.done": {
         const e = event as { call_id: string; name?: string; arguments: string; item_id?: string };
+        const trackedName = e.item_id ? this.functionCallNames.get(e.item_id) : undefined;
+        if (e.item_id) this.functionCallNames.delete(e.item_id);
         void this.runToolCall({
           callId: e.call_id,
-          name: e.name ?? "",
+          name: e.name ?? trackedName ?? "",
           arguments: parseArguments(e.arguments),
         });
         return;
@@ -562,6 +581,7 @@ export class OpenAIRealtimeAdapter implements ConversationAdapter {
         const response = e.response ?? {};
         const responseId = response.id ?? this.activeResponseId ?? "";
         if (this.activeResponseId === responseId) this.activeResponseId = null;
+        this.functionCallNames.clear();
         this.emit({
           type: "response_done",
           responseId,
@@ -603,8 +623,9 @@ export class OpenAIRealtimeAdapter implements ConversationAdapter {
       type: "conversation.item.create",
       item: { type: "function_call_output", call_id: call.callId, output: result.output },
     });
-    // Always ask for the follow-up response (for end_conversation this is the goodbye).
-    this.send({ type: "response.create" });
+    // Ask for the follow-up response (for end_conversation this is the goodbye) once
+    // EVERY pending call has its output: parallel tool calls share one response.
+    if (this.pendingToolCalls === 0) this.send({ type: "response.create" });
     this.emit({ type: "tool_result", call, result });
   }
 

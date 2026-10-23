@@ -50,6 +50,8 @@ export const TOOL_OUTPUTS = {
   consentPromptShown: "A consent card is shown; also ask them out loud.",
   ending: "Ending the conversation. Say a short, warm goodbye.",
   failed: "That tool did not work just now. Carry on without it and do not mention the error unless asked.",
+  searchNotLive:
+    "Web search is only available in live conversations, not in demo mode. Say so plainly and offer to talk about it anyway.",
 } as const;
 
 function formatIssues(issues: Array<{ path: PropertyKey[]; message: string }>): string {
@@ -175,6 +177,12 @@ export async function dispatchTool(user: User, input: ToolDispatchInput): Promis
   if (!isToolName(input.name)) {
     logInfo("tool_dispatch", { name: "unknown", ms: Date.now() - started, ok: false });
     return { output: TOOL_OUTPUTS.unknown };
+  }
+  // Demo mode is "no paid API": search_web calls the Responses API, so it is
+  // only honoured for a live conversation of a non-demo user.
+  if (input.name === "search_web" && (user.isDemo || conversation.mode !== "live")) {
+    logInfo("tool_dispatch", { name: input.name, ms: Date.now() - started, ok: false, reason: "not_live" });
+    return { output: TOOL_OUTPUTS.searchNotLive };
   }
 
   const parsed = toolArgumentSchemas[input.name].safeParse(input.arguments ?? {});

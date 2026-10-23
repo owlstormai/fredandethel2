@@ -2,9 +2,15 @@
  * POST /api/realtime/session — mint an ephemeral Realtime client secret for
  * the signed-in (non-demo) user and open a conversation record.
  *
- * The browser receives ONLY: the ephemeral secret, its expiry, the model/voice
- * labels, the public SDP endpoint and counts about injected context. The API
- * key, the instructions and the memory block never leave the server.
+ * This route's response carries ONLY: the ephemeral secret, its expiry, the
+ * model/voice labels, the public SDP endpoint and counts about injected
+ * context. The API key never leaves the server. Note that the instructions and
+ * tool list are part of the session config bound to the ephemeral secret, and
+ * OpenAI echoes the effective session (including instructions, i.e. the user's
+ * OWN memory block) to the browser in `session.created`/`session.updated` over
+ * the data channel; the holder of the secret can also `session.update` them.
+ * That is inherent to the browser-WebRTC flow (API_VERIFICATION.md §2, §3) and
+ * exposes nothing of other users; treat the prompt text as non-secret.
  */
 import { createHash } from "node:crypto";
 import { buildInstructions, estimateTokens } from "@/lib/ai/instructions";
@@ -19,6 +25,7 @@ import { requireApiUser } from "@/lib/auth/session";
 import { createConversation, getConversation } from "@/lib/database/conversations";
 import { buildMemoryContext, getPreferences, getProfile, hasConsent } from "@/lib/memory/service";
 import { logInfo, logWarn } from "@/lib/privacy/logging";
+import { enforceRateLimit } from "@/lib/privacy/rateLimit";
 import { getMaxSessionSeconds } from "@/lib/usage/caps";
 import { checkCaps, recordUsage } from "@/lib/usage/tracker";
 
@@ -32,6 +39,8 @@ function safetyIdentifier(userId: string): string {
 
 export const POST = withErrorHandling(async (request: Request) => {
   const user = await requireApiUser();
+  const limited = enforceRateLimit("default", user.id);
+  if (limited) return limited;
   if (user.isDemo) {
     throw new HttpError(403, "demo_user", "Demo profiles use the simulated companion and cannot start live sessions.");
   }

@@ -242,3 +242,36 @@ describe("RealtimeWebRTCClient.connect", () => {
     await expect(client.connect({ clientSecret: "ek", callsUrl: "https://x/calls", micStream: null, onServerEvent: () => {} })).rejects.toMatchObject({ code: "unsupported" });
   });
 });
+
+describe("RealtimeWebRTCClient.close during connect", () => {
+  it("rejects a pending connect() immediately with 'aborted' instead of waiting for the open timeout", async () => {
+    FakePeerConnection.autoOpen = false;
+    const client = new RealtimeWebRTCClient({ RTCPeerConnection: PC, fetch: okFetch(), dataChannelOpenTimeoutMs: 15_000 });
+    const pending = client.connect({ clientSecret: "ek", callsUrl: "https://x/calls", micStream: fakeMic(), onServerEvent: () => {} });
+    await vi.waitFor(() => expect(FakePeerConnection.instances[0]?.remoteDescription).toBeTruthy());
+    const started = Date.now();
+    client.close(); // e.g. the adapter tears the transport down while a reconnect attempt is still negotiating
+    await expect(pending).rejects.toMatchObject({ name: "RealtimeConnectError", code: "aborted" });
+    expect(Date.now() - started).toBeLessThan(1000);
+    expect(client.state).toBe("closed");
+    expect(FakePeerConnection.instances[0].closed).toBe(true);
+  });
+
+  it("leaves no unhandled rejection behind when connect() fails before the channel opens", async () => {
+    vi.useFakeTimers();
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      const fetchImpl = vi.fn(async () => new Response("bad token", { status: 401 })) as unknown as typeof fetch;
+      const client = new RealtimeWebRTCClient({ RTCPeerConnection: PC, fetch: fetchImpl, dataChannelOpenTimeoutMs: 50 });
+      await expect(client.connect({ clientSecret: "ek", callsUrl: "https://x/calls", micStream: fakeMic(), onServerEvent: () => {} })).rejects.toMatchObject({ code: "sdp_rejected" });
+      // Previously the internal waitForOpen() promise kept ticking and rejected with "timeout" here, unobserved.
+      await vi.advanceTimersByTimeAsync(200);
+      await Promise.resolve();
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+      vi.useRealTimers();
+    }
+  });
+});
