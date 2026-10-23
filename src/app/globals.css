@@ -1,0 +1,289 @@
+@import "tailwindcss";
+
+/* ---------------------------------------------------------------------------
+   Companion design tokens
+   Dark, calm, luminous. Accent is driven by html[data-orb-color], text size by
+   html[data-text-scale], and motion by html[data-motion] (+ OS preference).
+   --------------------------------------------------------------------------- */
+
+:root {
+  color-scheme: dark;
+
+  /* Surfaces */
+  --bg: #070b14;
+  --bg-elevated: #0b1120;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.08);
+  --surface-solid: #0f1627;
+  --line: rgba(255, 255, 255, 0.1);
+  --line-strong: rgba(255, 255, 255, 0.2);
+
+  /* Text (all AA on --bg) */
+  --fg: #eef3fb;
+  --fg-muted: #a9b4c6;
+  --fg-subtle: #7f8ba0;
+
+  /* Semantic */
+  --danger: #ff8a93;
+  --danger-strong: #e5484d;
+  --danger-soft: rgba(255, 138, 147, 0.14);
+  --warning: #ffc266;
+  --warning-soft: rgba(255, 194, 102, 0.14);
+  --success: #5fe0b0;
+  --success-soft: rgba(95, 224, 176, 0.14);
+
+  /* Accent defaults (cyan) — overridden per data-orb-color below */
+  --accent: #5ee1ff;
+  --accent-strong: #22c9f5;
+  --accent-soft: rgba(94, 225, 255, 0.14);
+  --accent-glow: rgba(94, 225, 255, 0.45);
+  --accent-ink: #061018;
+
+  /* Shape */
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+  --shadow-panel: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 24px 70px -40px rgba(0, 0, 0, 0.9);
+
+  /* Motion scale: 1 = animate, 0 = still. Read by JS too. */
+  --motion-ok: 1;
+}
+
+html[data-orb-color="cyan"] {
+  --accent: #5ee1ff;
+  --accent-strong: #22c9f5;
+  --accent-soft: rgba(94, 225, 255, 0.14);
+  --accent-glow: rgba(94, 225, 255, 0.45);
+  --accent-ink: #061018;
+}
+html[data-orb-color="violet"] {
+  --accent: #bfaaff;
+  --accent-strong: #9d7dff;
+  --accent-soft: rgba(191, 170, 255, 0.14);
+  --accent-glow: rgba(157, 125, 255, 0.45);
+  --accent-ink: #0d0818;
+}
+html[data-orb-color="emerald"] {
+  --accent: #6fe7b7;
+  --accent-strong: #2fd392;
+  --accent-soft: rgba(111, 231, 183, 0.14);
+  --accent-glow: rgba(47, 211, 146, 0.45);
+  --accent-ink: #04140d;
+}
+html[data-orb-color="amber"] {
+  --accent: #ffc971;
+  --accent-strong: #f5ad3c;
+  --accent-soft: rgba(255, 201, 113, 0.14);
+  --accent-glow: rgba(245, 173, 60, 0.45);
+  --accent-ink: #171004;
+}
+html[data-orb-color="white"] {
+  --accent: #eef3fb;
+  --accent-strong: #c9d4e6;
+  --accent-soft: rgba(238, 243, 251, 0.12);
+  --accent-glow: rgba(238, 243, 251, 0.4);
+  --accent-ink: #0a0f1a;
+}
+
+/* Text scale — everything is rem-based, so spacing and targets scale too. */
+html {
+  font-size: 18px;
+}
+html[data-text-scale="normal"] {
+  font-size: 16px;
+}
+html[data-text-scale="large"] {
+  font-size: 18px;
+}
+html[data-text-scale="xlarge"] {
+  font-size: 21px;
+}
+
+/* Motion — an explicit in-app preference wins; "system" follows the OS. */
+html[data-motion="reduced"] {
+  --motion-ok: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-motion="system"],
+  html:not([data-motion]) {
+    --motion-ok: 0;
+  }
+}
+html[data-motion="reduced"] *,
+html[data-motion="reduced"] *::before,
+html[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-motion="system"] *,
+  html[data-motion="system"] *::before,
+  html[data-motion="system"] *::after,
+  html:not([data-motion]) *,
+  html:not([data-motion]) *::before,
+  html:not([data-motion]) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Tailwind theme — exposes the tokens as utilities (bg-surface, text-muted …)
+   --------------------------------------------------------------------------- */
+@theme inline {
+  --color-background: var(--bg);
+  --color-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-solid: var(--surface-solid);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-foreground: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-glow: var(--accent-glow);
+  --color-accent-ink: var(--accent-ink);
+  --color-danger: var(--danger);
+  --color-danger-strong: var(--danger-strong);
+  --color-danger-soft: var(--danger-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --shadow-panel: var(--shadow-panel);
+
+  --animate-fade-in: fade-in 320ms ease-out both;
+  --animate-rise-in: rise-in 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-spin-slow: spin 1.4s linear infinite;
+  --animate-pulse-soft: pulse-soft 2.6s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes pulse-soft {
+    0%,
+    100% {
+      opacity: 0.55;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+}
+
+/* Variant: only when motion is allowed (explicit "full", or "system" + OS says ok). */
+@custom-variant motion-ok {
+  :root[data-motion="full"] & {
+    @slot;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    :root:not([data-motion="reduced"]):not([data-motion="full"]) & {
+      @slot;
+    }
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+@layer base {
+  html {
+    background: var(--bg);
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+  body {
+    min-height: 100dvh;
+    background-color: var(--bg);
+    background-image:
+      radial-gradient(1200px 600px at 50% -10%, var(--accent-soft), transparent 70%),
+      radial-gradient(800px 500px at 100% 100%, rgba(255, 255, 255, 0.025), transparent 70%);
+    background-attachment: fixed;
+    color: var(--fg);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-ink);
+  }
+  :focus-visible {
+    outline: 3px solid var(--accent);
+    outline-offset: 3px;
+  }
+  button,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+    letter-spacing: -0.015em;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Small shared utilities
+   --------------------------------------------------------------------------- */
+@utility panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-panel);
+  backdrop-filter: blur(14px);
+}
+
+@utility glow-ring {
+  box-shadow: 0 0 0 1px var(--line-strong), 0 0 40px -8px var(--accent-glow);
+}
+
+@utility text-balance {
+  text-wrap: balance;
+}
+
+/* Touch target helper: 48px minimum regardless of inner size. */
+@utility tap-target {
+  min-width: 3rem;
+  min-height: 3rem;
+}
