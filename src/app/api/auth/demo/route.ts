@@ -17,7 +17,7 @@ export const GET = withErrorHandling(async () => {
 });
 
 export const POST = withErrorHandling(async (request: Request) => {
-  const limited = enforceRateLimit("auth", clientIp(request));
+  const limited = enforceRateLimit("demoLogin", clientIp(request));
   if (limited) return limited;
   const body = await parseBody(request, demoLoginSchema);
   const { user, tokenVersion } = await signInDemo(body.slug);

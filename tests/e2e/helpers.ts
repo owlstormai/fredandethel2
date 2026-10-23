@@ -27,13 +27,21 @@ export async function startTalking(page: Page): Promise<void> {
   await expect.poll(async () => orb.getAttribute("data-state"), { timeout: 20_000 }).not.toBe("offline");
 }
 
-/** Type a message using the text fallback and wait for an assistant reply after it. */
+/** Wait until the companion has finished speaking (so typing does not interrupt it). */
+export async function waitForQuiet(page: Page, timeout = 45_000): Promise<void> {
+  const orb = page.getByTestId("orb");
+  await expect.poll(async () => orb.getAttribute("data-state"), { timeout }).toMatch(/^(idle|listening|muted)$/);
+}
+
+/** Type a message using the text fallback and return the companion's completed reply to it. */
 export async function say(page: Page, text: string): Promise<string> {
-  const assistantBefore = page.locator('[data-testid="transcript-entry"][data-role="assistant"]');
-  const before = await assistantBefore.count();
+  await waitForQuiet(page);
+  const assistant = page.locator('[data-testid="transcript-entry"][data-role="assistant"]');
+  const before = await assistant.count();
   await page.getByTestId("text-input").fill(text);
   await page.getByTestId("text-send").click();
-  const assistant = page.locator('[data-testid="transcript-entry"][data-role="assistant"]');
   await expect.poll(async () => assistant.count(), { timeout: 30_000 }).toBeGreaterThan(before);
-  return (await assistant.last().innerText()).trim();
+  const reply = assistant.nth(before);
+  await expect(reply).toHaveAttribute("data-final", "true", { timeout: 60_000 });
+  return (await reply.innerText()).trim();
 }

@@ -8,11 +8,12 @@
  */
 import { jsonError } from "@/lib/api/respond";
 
-export type RateLimitGroup = "auth" | "demoTurn" | "memories" | "tools" | "events" | "default";
+export type RateLimitGroup = "auth" | "demoLogin" | "demoTurn" | "memories" | "tools" | "events" | "default";
 
 /** Requests allowed per minute, per key. */
 export const RATE_LIMITS: Record<RateLimitGroup, number> = {
   auth: 10,
+  demoLogin: 30, // demo profiles have no password to brute-force; shared IPs (kiosks, families) sign in often
   demoTurn: 60,
   memories: 60,
   tools: 60,

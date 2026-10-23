@@ -32,17 +32,19 @@ test.describe("memory flows (demo profile, memory consent seeded)", () => {
   });
 
   test("correct a memory and confirm a reported one", async ({ page }) => {
+    const dog = `Biscuit${Date.now() % 100000}`;
     const create = await page.request.post("/api/memories", {
-      data: { content: "My neighbour's dog is called Biscuit", kind: "fact", category: "friends" },
+      data: { content: `My neighbour's dog is called ${dog}`, kind: "fact", category: "friends" },
     });
     expect(create.ok()).toBeTruthy();
     await page.goto("/memory");
-    const item = page.getByTestId("memory-item").filter({ hasText: /Biscuit/ }).first();
+    const item = page.getByTestId("memory-item").filter({ hasText: dog }).first();
+    await expect(item).toBeVisible();
     await item.getByTestId("memory-edit").click();
-    const input = item.getByRole("textbox");
-    await input.fill("My neighbour's dog is called Biscuit and he is a beagle");
-    await input.press("Enter");
-    await expect(page.getByTestId("memory-item").filter({ hasText: /beagle/ })).toHaveCount(1);
+    const input = item.getByTestId("memory-edit-input");
+    await input.fill(`My neighbour's dog is called ${dog} and he is a beagle`);
+    await item.getByTestId("memory-edit-save").click();
+    await expect(page.getByTestId("memory-item").filter({ hasText: new RegExp(`${dog} and he is a beagle`) })).toHaveCount(1);
   });
 
   test("export contains the user's data and only theirs", async ({ page }) => {

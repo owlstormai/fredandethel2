@@ -13,12 +13,13 @@ const executablePath = process.env.PW_CHROMIUM_PATH ?? "/opt/pw-browsers/chromiu
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  globalSetup: "./tests/e2e/global-setup.ts",
   timeout: 60_000,
   expect: { timeout: 10_000 },
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [["list"], ["html", { open: "never", outputFolder: "test-results/html" }]],
+  reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   use: {
     baseURL,
     trace: "retain-on-failure",

@@ -47,7 +47,7 @@ test.describe("demo conversation", () => {
     await say(page, "Let me tell you about my granddaughter Lily.");
     const select = page.getByTestId("model-select");
     await expect(select).toBeVisible();
-    await select.getByText(/lower cost|mini/i).click();
+    await select.selectOption("mini");
     await expect(page.getByText(/switched to/i)).toBeVisible({ timeout: 20_000 });
     const orb = page.getByTestId("orb");
     await expect.poll(async () => orb.getAttribute("data-state"), { timeout: 20_000 }).not.toBe("connecting");
