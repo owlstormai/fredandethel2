@@ -3,6 +3,7 @@
  * Shared by the API routes and the integration tests. Ownership is enforced at
  * the repository layer (user-scoped queries); a foreign id simply reads as null.
  */
+import { isUuid } from "@/lib/api/ids";
 import type { z } from "zod";
 import type { conversationEventSchema, createConversationSchema, EndConversationResponse } from "@/lib/api/contracts";
 import { HttpError } from "@/lib/api/respond";
@@ -49,6 +50,7 @@ export async function startConversation(user: User, input: z.infer<typeof create
 }
 
 export async function requireOwnedConversation(userId: string, conversationId: string): Promise<Conversation> {
+  if (!isUuid(conversationId)) throw new HttpError(404, "conversation_not_found", "That conversation could not be found.");
   const conversation = await getConversation(userId, conversationId);
   if (!conversation) throw new HttpError(404, "conversation_not_found", "That conversation could not be found.");
   return conversation;

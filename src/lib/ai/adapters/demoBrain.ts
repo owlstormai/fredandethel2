@@ -393,8 +393,97 @@ function spoken(content: string): string {
   return lowerFirst(toSecondPerson(content.replace(/[.!?]+$/, "")));
 }
 
-function memoryCallback(memory: Memory): string {
-  return spoken(memory.content);
+// Memory contents are stored as statements ABOUT the user ("Tends a garden; the
+// tomatoes are her pride", "Margaret is 78…", or the user's own words "I take my
+// coffee black"). To say them back naturally we convert to second person; when
+// the heuristics cannot produce a sentence that starts with "you", the brain
+// quotes the note instead of mangling it.
+const THIRD_PERSON: Array<[RegExp, string]> = [
+  [/\b(she|he|they)'s\b/gi, "you're"],
+  [/\b(she|he) is\b/gi, "you are"],
+  [/\bthey are\b/gi, "you are"],
+  [/\b(she|he) was\b/gi, "you were"],
+  [/\bthey were\b/gi, "you were"],
+  [/\b(she|he|they) ha(s|ve)\b/gi, "you have"],
+  [/\b(she|he|they) do(es)?\b/gi, "you do"],
+  [/\b(her|his|their)\b/g, "your"],
+  [/\b(Her|His|Their)\b/g, "Your"],
+  [/\bhers\b/gi, "yours"],
+  [/\b(herself|himself|themselves)\b/gi, "yourself"],
+  [/\b(she|he|they)\b/gi, "you"],
+  [/\b(him|them)\b/gi, "you"],
+];
+
+const LEADING_VERBS = new Set([
+  "tends", "loves", "likes", "enjoys", "prefers", "takes", "collects", "does", "has", "is", "plays", "goes", "watches",
+  "teaches", "lives", "works", "walks", "reads", "listens", "keeps", "grows", "makes", "drinks", "eats", "visits",
+  "volunteers", "sings", "paints", "knits", "bakes", "cooks", "gardens", "drives", "follows", "supports", "attends",
+  "owns", "raises", "misses", "remembers", "celebrates", "dislikes", "avoids", "needs", "wants", "uses", "wears",
+  "sleeps", "gets", "feels", "speaks", "swims", "fishes", "travels", "calls", "writes", "studies", "spends", "wakes",
+  "struggles", "worries", "hopes", "plans", "runs", "sees", "talks", "stays", "helps", "cares", "looks", "comes",
+]);
+
+const LEADING_NOUNS = new Set([
+  "granddaughter", "grandson", "grandchild", "grandchildren", "grandkids", "daughter", "son", "wife", "husband",
+  "partner", "sister", "brother", "mother", "father", "mom", "dad", "neighbor", "neighbour", "friend", "friends",
+  "dog", "cat", "garden", "church", "doctor", "nurse", "caregiver", "aide", "birthday", "anniversary", "family",
+]);
+
+function deconjugate(verb: string): string {
+  const v = verb.toLowerCase();
+  if (v === "is") return "are";
+  if (v === "has") return "have";
+  if (v === "does") return "do";
+  if (v === "goes") return "go";
+  if (/ies$/.test(v)) return v.replace(/ies$/, "y");
+  if (/(ches|shes|sses|xes|zes)$/.test(v)) return v.replace(/es$/, "");
+  return v.replace(/s$/, "");
+}
+
+/**
+ * Convert a stored memory into a second-person phrase ("you tend a vegetable
+ * garden; the tomatoes are your pride"). Returns `null` when the result would
+ * not read as a sentence addressed to the user.
+ */
+export function memoryToSecondPerson(content: string, name: string | null): string | null {
+  let out = content.trim().replace(/[.!?]+$/, "");
+  if (!out) return null;
+  if (name) {
+    const n = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out
+      .replace(new RegExp(`^${n}\\s+is\\b`, "i"), "you're")
+      .replace(new RegExp(`^${n}\\s+has\\b`, "i"), "you have")
+      .replace(new RegExp(`^${n}\\s+was\\b`, "i"), "you were")
+      .replace(new RegExp(`\\b${n}'s\\b`, "gi"), "your")
+      .replace(new RegExp(`\\b${n}\\b`, "g"), "you");
+  }
+  out = toSecondPerson(out);
+  for (const [re, rep] of THIRD_PERSON) out = out.replace(re, rep);
+  const words = out.split(/\s+/);
+  const token = words[0] ?? "";
+  const first = token.toLowerCase().replace(/[^a-z']/g, "");
+  const punct = token.slice(first.length); // e.g. ";" in "Widower;"
+  const rest = words.slice(1).join(" ");
+  const join = (head: string) => `${head}${punct}${rest ? " " + rest : ""}`;
+  if (first === "widower" || first === "widow") {
+    out = join(`you're a ${first}`);
+  } else if (LEADING_VERBS.has(first)) {
+    out = join(`you ${deconjugate(first)}`);
+  } else if (LEADING_NOUNS.has(first)) {
+    out = join(`your ${first}`);
+  }
+  out = out.replace(/\byou (is|was)\b/g, (_m, v: string) => (v === "is" ? "you are" : "you were"));
+  out = out.replace(/^you is\b/, "you're");
+  if (!/^you(\b|'re|'ve|'d|'ll)|^your\b/i.test(out)) return null;
+  return lowerFirst(out);
+}
+
+/** A natural callback to a memory, or a quoted note when conversion is unsafe. */
+function memoryCallback(memory: Memory, name: string | null, mode: "mentioned" | "told"): string {
+  const phrase = memoryToSecondPerson(memory.content, name);
+  if (phrase) return mode === "mentioned" ? `you mentioned ${phrase}` : `you told me ${phrase}`;
+  const note = memory.content.trim().replace(/[.!?]+$/, "");
+  return mode === "mentioned" ? `you shared this with me: "${note}"` : `I kept a note that says: "${note}"`;
 }
 
 // ----- onboarding -----------------------------------------------------------
@@ -429,7 +518,7 @@ async function greet(turn: Turn): Promise<{ reply: string; next: DemoState }> {
     const memories = await recallFor(turn, "", 6);
     if (memories.length > 0) {
       const memory = pick(memories, hash, 3);
-      reply += ` I remember you mentioned ${memoryCallback(memory)} — how's that going these days?`;
+      reply += ` I remember ${memoryCallback(memory, turn.name, "mentioned")} — how's that going these days?`;
     } else {
       reply += " What's on your mind today?";
     }
@@ -795,7 +884,7 @@ async function reflect(turn: Turn): Promise<string> {
   if (turn.memoryOn && extractKeywords(text).length > 0 && hash % 2 === 0) {
     const related = await recallFor(turn, text, 1);
     if (related[0] && normalizeText(related[0].content) !== normalizeText(text)) {
-      parts.push(`That reminds me — you told me ${memoryCallback(related[0])}.`);
+      parts.push(`That reminds me — ${memoryCallback(related[0], turn.name, "told")}.`);
     }
   }
 

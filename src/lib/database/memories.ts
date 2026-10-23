@@ -2,6 +2,7 @@
  * Memories, memory events and tombstones. Every query is user-scoped.
  * Soft deletes: `deleted_at` is set; rows are kept for audit and export.
  */
+import { isUuid } from "@/lib/api/ids";
 import type { Memory, MemoryEvent, MemoryEventType, MemoryKind, MemoryStatus } from "@/lib/types";
 import { mapMemory, mapMemoryEvent, toIsoRequired, type MemoryEventRow, type MemoryRow } from "./mappers";
 import { userQuery, userQueryOne } from "./scoped";
@@ -46,6 +47,7 @@ export async function insertMemory(userId: string, input: InsertMemoryInput): Pr
 
 /** A live (not deleted) memory by id. */
 export async function getMemory(userId: string, memoryId: string): Promise<Memory | null> {
+  if (!isUuid(memoryId)) return null;
   const row = await userQueryOne<MemoryRow>(
     userId,
     `SELECT ${COLUMNS} FROM memories WHERE user_id = $1 AND id = $2 AND deleted_at IS NULL`,

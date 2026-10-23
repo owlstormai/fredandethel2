@@ -16,7 +16,8 @@ test("users cannot read, edit or delete each other's memories or conversations",
 
   const conv = await a.post("/api/conversations", { data: { mode: "demo", modelKey: "full" } });
   expect(conv.ok()).toBeTruthy();
-  const convId = (await conv.json()).id;
+  const convJson = await conv.json();
+  const convId = convJson.conversation?.id ?? convJson.id;
 
   // Bob tries everything.
   expect((await b.get(`/api/memories`)).ok()).toBeTruthy();

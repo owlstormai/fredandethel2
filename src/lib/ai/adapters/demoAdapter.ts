@@ -252,7 +252,8 @@ export class DemoAdapter implements ConversationAdapter {
 
     let conversation: Conversation;
     try {
-      conversation = await this.fetchJson<Conversation>("/api/conversations", {
+      // The route returns `{ conversation }`; accept a bare Conversation too.
+      const payload = await this.fetchJson<Conversation | { conversation: Conversation }>("/api/conversations", {
         method: "POST",
         json: {
           mode: "demo",
@@ -261,6 +262,8 @@ export class DemoAdapter implements ConversationAdapter {
         },
         signal: this.signal,
       });
+      conversation = "conversation" in payload ? payload.conversation : payload;
+      if (!conversation?.id) throw new Error("Conversation response had no id.");
     } catch (error) {
       this.closed = true;
       if (!this.signal?.aborted) {
