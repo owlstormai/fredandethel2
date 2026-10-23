@@ -33,12 +33,18 @@ npm run dev                            # http://localhost:3000
 - With `OPENAI_API_KEY`: accounts you create run in **live mode**; demo profiles stay simulated.
 - Microphone access requires `localhost` or HTTPS (secure context).
 
-_Verified results of the local run are in `docs/TEST_PLAN.md` → "Latest results"._
+**Verified 2026-10-23** in the build container: the exact steps above (with the
+container's local Postgres instead of Docker) produced a working app on
+http://127.0.0.1:3100 (`next build` + `next start`), the health endpoint returned
+`{"ok":true,"db":"ok","liveConfigured":false}`, and the Playwright suite drove the demo
+end to end with a fake microphone: 17 passed, 2 skipped (live). Full table in
+`docs/TEST_PLAN.md` → "Latest results". Screenshots in `docs/screenshots/`.
 
 ## Smallest external deployment path (Vercel + Supabase)
 
-The user has Vercel and Supabase accounts. Nothing has been deployed; no
-infrastructure charges have been incurred. To deploy:
+The user has Vercel and Supabase accounts and is creating the Supabase project and
+Vercel project themselves. Nothing has been deployed by this build; no infrastructure
+charges have been incurred. To deploy:
 
 1. **Supabase**: create a project → Connect → copy the **Session pooler** URI
    (port 5432, IPv4-compatible) as `DATABASE_URL`. Run migrations from your

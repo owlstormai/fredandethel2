@@ -44,4 +44,42 @@ See `PREVIEW.md` → "Live acceptance script".
 
 ## Latest results
 
-_Filled in by the final report._
+Run on 2026-10-23 in the build container (Node 22.22, Postgres 16.15, Chromium 141
+via Playwright 1.64, no `OPENAI_API_KEY`).
+
+| Check | Command | Result |
+|---|---|---|
+| Typecheck | `npm run typecheck` | pass |
+| Lint | `npm run lint` | pass, 0 problems |
+| Unit + integration | `npm run test` | **305 passed / 0 failed** (40 files; 45 integration tests against real Postgres) |
+| Production build | `npm run build` | pass (32 routes) |
+| Secrets in client bundle | `npm run check:secrets` | PASS: no secrets found in `.next/static` |
+| End-to-end, demo mode | `E2E_FAKE_AUDIO=tests/fixtures/fake-mic.wav npm run test:e2e` | **17 passed / 0 failed / 2 skipped** |
+| End-to-end, live mode | `tests/e2e/live.spec.ts` | **skipped** (requires `OPENAI_API_KEY`) |
+| Verification checklist | `npm run verify` | 10 PASS, 0 FAIL, 6 SKIP (OpenAI checks need a key) |
+
+What the e2e suite covered (each test starts from a truncated, re-seeded test database):
+landing and demo-profile entry; signup/logout/login round trip; protected-page redirects;
+demo conversation start with greeting and *Simulated* label; orb state transitions
+through speaking and back to idle, Stop interrupts; typed input gets a reply and both
+sides are transcribed; model switch mid-conversation keeps the transcript and shows the
+switch note; ending shows the summary panel; remember → listed on `/memory` → delete →
+tombstone count rises → re-saving the same fact is refused; inline correction of a
+memory; export contains only the user's rows; cross-user access to memories and
+conversations returns 404 and anonymous access returns 401; settings persist across
+reload and theme attributes apply; orb `data-mic-level` rises during fake-mic speech
+bursts and falls to near zero in silence; reduced motion still renders; developer panel
+shows sessions, caps, estimates badge and the pricing version.
+
+### Not verified (honest gaps)
+
+- Acceptance tests 1, 3 and 4 in **live** mode (real audio, real barge-in latency,
+  semantic VAD pause tolerance) could not be run without an API key. The code is built
+  to the verified docs and the adapter's event handling is unit-tested with scripted
+  server events, but the first real session may still surface an API-shape mismatch.
+  `npm run verify` and `tests/e2e/live.spec.ts` exist to close this gap in minutes once
+  a key is present.
+- Humor quality and disagreement (tests 8 and 9) were verified only for the rule-based
+  demo brain and for the presence of the rules in the system prompt; the live model's
+  behaviour needs the manual script in `PREVIEW.md`.
+- Web search and AI summarization are unit-tested against realistic mocked payloads only.

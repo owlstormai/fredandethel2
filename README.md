@@ -51,6 +51,12 @@ Open http://localhost:3000, pick a demo profile or create an account, and press
 See `.env.example`. Secrets are server-only. Pricing assumptions and model IDs
 live in `src/lib/ai/models.ts` and can be overridden with environment variables.
 
+## Screenshots
+
+`docs/screenshots/` — landing (desktop and phone), the nine orb states, the talk screen
+mid-conversation (desktop and phone), the session summary, settings, memory inspector
+and the developer panel.
+
 ## Documentation
 
 - `PREVIEW.md` — verified environment facts, local preview, deployment path
@@ -62,6 +68,34 @@ live in `src/lib/ai/models.ts` and can be overridden with environment variables.
 - `docs/API_VERIFICATION.md` — OpenAI API facts verified against current docs with sources
 - `AGENTS.md` — the product brief this was built from
 
+## What works, what is simulated, what needs credentials
+
+| Area | Status |
+|---|---|
+| UI, orb, settings, memory inspector, developer panel | Working, verified in Chromium (screenshots in `docs/screenshots/`) |
+| Demo mode conversation, onboarding, memory consent/recall/forget, humor level, serious-topic handling, gentle disagreement | Working; **rule-based and labeled Simulated** |
+| Memory store, provenance labels, tombstones, summary suppression, export, delete account, per-user isolation | Working, integration-tested against Postgres |
+| Live mode: ephemeral key minting, WebRTC client, barge-in, semantic VAD config, tools, usage/cost | Built to the verified API docs and unit-tested with scripted events; **not yet exercised against the real API** (no key in the build environment) |
+| Web search (Responses `web_search`), AI summaries | Same as above; degrade gracefully without a key |
+| Hosting | No public URL from the build container; Vercel + Supabase path documented in `PREVIEW.md`, not deployed |
+
 ## Limitations
 
-_Filled in from the final verified report; see the bottom of `docs/TEST_PLAN.md`._
+- Live mode needs `OPENAI_API_KEY`; run `npm run verify` first, then the live e2e test.
+  Until that runs, treat live-mode claims as unverified.
+- The demo brain is a small deterministic script. It is honest about memory and consent
+  but it is not an AI; its replies are templated.
+- Demo voice input uses the browser's speech recognition, which exists only in
+  Chromium-based browsers; elsewhere the demo is typed. Demo voice output uses browser
+  speech synthesis when voices are available.
+- Deleting a memory writes a keyword tombstone. A very generic deleted fact (for example
+  "likes tea") can block similar future facts until it is cleared; there is no
+  clear-tombstone UI yet.
+- Rate limits are per server instance; there is no email verification or password reset;
+  the CSP header is basic. See `docs/SECURITY.md` for the production checklist.
+- Model switching rehydrates application-owned context (memories, summaries, recent
+  transcript). Hidden model state does not transfer and the UI says so.
+- The side-by-side comparison runs two real sessions and bills both.
+- Costs are estimates from configured per-token prices; no real billing.
+- Fred and Ethel map to OpenAI's `cedar` and `marin` voices; OpenAI does not label voice
+  gender, so the pairing is ours and configurable.

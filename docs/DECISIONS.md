@@ -2,6 +2,15 @@
 
 Running log of architecture and product decisions. Newest first.
 
+## 2026-10-23 — Integration
+
+- **Model IDs are `gpt-realtime-2.1` / `gpt-realtime-2.1-mini`,** transcription `gpt-realtime-whisper`, text `gpt-6-luna`. The names in the original brief (`gpt-realtime`, `gpt-realtime-mini`) are deprecated with a 2027-01-20 shutdown; verified in `docs/API_VERIFICATION.md`.
+- **Transcript rehydration ignores memory consent.** `buildMemoryContext` gates stored facts and summaries on memory consent, but always includes the tail of the conversation being continued: that transcript is the live conversation, not memory, and a model switch must not amnesia the user who declined memory.
+- **Demo brain callbacks speak in the second person, or quote.** Stored memories are statements about the user; a heuristic converter rewrites them ("you tend a garden… your pride"). Subject pronouns are left alone for memories about other people (family, friends, stories) because "he is a beagle" is about the dog. When the result does not start with "you/your", the brain quotes the note rather than mangling it.
+- **Malformed ids are 404s.** Route ids are UUID-checked before hitting Postgres so a bad id cannot surface a database error.
+- **E2E runs start from a truncated, re-seeded test database** (`scripts/e2e-reset.ts` via Playwright `globalSetup`). Tombstones are deliberately persistent, so a previous run's deletions would otherwise block a later run's saves.
+- **Demo sign-in has its own rate-limit bucket** (30/min/IP) separate from password auth (10/min/IP): there is no password to brute-force and shared devices sign in often.
+
 ## 2026-10-22 — Foundation
 
 - **Next.js 16 App Router, Cache Components disabled.** Every page is auth-gated and dynamic; PPR/`use cache` adds complexity for no benefit in an MVP. Can be enabled later per route.
