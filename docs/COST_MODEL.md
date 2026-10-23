@@ -75,12 +75,15 @@ prompt caching reduces this substantially when the session history stays static.
 
 ## Caps
 
+The in-app caps are a safety net behind the spending limits configured on the OpenAI
+account itself; they are deliberately loose for the prototype.
+
 Environment variables (see `.env.example`):
 
 | Variable | Default | Effect |
 |---|---|---|
-| `COMPANION_DAILY_COST_CAP_USD` | 5 | New live sessions refused when today's estimated spend across all users exceeds this |
-| `COMPANION_PER_USER_DAILY_COST_CAP_USD` | 2 | Same, per user |
+| `COMPANION_DAILY_COST_CAP_USD` | 20 | New live sessions refused when today's estimated spend across all users exceeds this |
+| `COMPANION_PER_USER_DAILY_COST_CAP_USD` | 10 | Same, per user |
 | `COMPANION_MAX_SESSION_MINUTES` | 30 | Client ends the session at this limit (API hard limit is 60) |
 
 Caps are enforced server-side when a session is minted (`/api/realtime/session`)

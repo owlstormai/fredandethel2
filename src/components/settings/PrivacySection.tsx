@@ -87,7 +87,7 @@ export function PrivacySection() {
         />
         <Toggle
           label="Look things up online"
-          description="Lets your companion check news, weather and sports. Your memories are never sent along with a search."
+          description="On by default. Lets your companion check news, weather and sports. Your memories are never sent along with a search; switch off to stop all online lookups."
           checked={preferences.searchEnabled}
           busy={pending === "searchEnabled"}
           onChange={(v) => void setConsent("searchEnabled", v, "Online lookups are on.", "Online lookups are off.")}

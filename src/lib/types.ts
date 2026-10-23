@@ -99,7 +99,8 @@ export const DEFAULT_PREFERENCES: Omit<Preferences, "userId" | "updatedAt"> = {
   modelKey: "full",
   memoryEnabled: false,
   sensitiveMemoryEnabled: false,
-  searchEnabled: false,
+  // Web search is opt-out: only the model's query ever leaves the app, never memories.
+  searchEnabled: true,
 };
 
 // ---------------------------------------------------------------------------

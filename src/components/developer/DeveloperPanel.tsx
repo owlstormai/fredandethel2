@@ -23,7 +23,7 @@ export function DeveloperPanel({ user }: DeveloperPanelProps) {
       <ModeCard user={user} />
       <UsagePanel />
       <ModelsPanel />
-      <ComparisonPanel />
+      {process.env.NEXT_PUBLIC_COMPANION_ENABLE_COMPARISON === "true" ? <ComparisonPanel /> : null}
     </div>
   );
 }

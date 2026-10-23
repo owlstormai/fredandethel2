@@ -212,7 +212,10 @@ export async function recallMemories(userId: string, query: string, limit = 8): 
 /** Latest consent record for the scope; false when the user never decided. */
 export async function hasConsent(userId: string, scope: ConsentScope): Promise<boolean> {
   const latest = await getLatestConsent(userId, scope);
-  return latest?.granted ?? false;
+  if (latest) return latest.granted;
+  // Memory scopes are opt-in. Web search is opt-out: it never receives memories,
+  // only the model's query, and the user can switch it off in Settings.
+  return scope === "web_search";
 }
 
 /**

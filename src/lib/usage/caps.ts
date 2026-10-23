@@ -4,8 +4,8 @@
  */
 import { MAX_REALTIME_SESSION_SECONDS } from "@/lib/ai/models";
 
-export const DEFAULT_DAILY_COST_CAP_USD = 5;
-export const DEFAULT_PER_USER_DAILY_COST_CAP_USD = 2;
+export const DEFAULT_DAILY_COST_CAP_USD = 20;
+export const DEFAULT_PER_USER_DAILY_COST_CAP_USD = 10;
 export const DEFAULT_MAX_SESSION_MINUTES = 30;
 
 export interface CapConfig {

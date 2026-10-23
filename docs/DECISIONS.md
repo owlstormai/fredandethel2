@@ -4,6 +4,9 @@ Running log of architecture and product decisions. Newest first.
 
 ## 2026-10-23 — Integration
 
+- **Web search is on by default (opt-out).** Only the model's query string reaches search, never memories or the name, so there is nothing private to protect with an opt-in; the switch stays in Settings for billing control. `hasConsent("web_search")` returns true when no record exists; memory scopes remain opt-in.
+- **Side-by-side comparison hidden** behind `NEXT_PUBLIC_COMPANION_ENABLE_COMPARISON`; it is an economics tool for later and double-bills.
+- **In-app cost caps relaxed to $20/day and $10/user/day.** The OpenAI account has its own monthly limit; the app caps are a backstop, not the budget.
 - **Model IDs are `gpt-realtime-2.1` / `gpt-realtime-2.1-mini`,** transcription `gpt-realtime-whisper`, text `gpt-6-luna`. The names in the original brief (`gpt-realtime`, `gpt-realtime-mini`) are deprecated with a 2027-01-20 shutdown; verified in `docs/API_VERIFICATION.md`.
 - **Transcript rehydration ignores memory consent.** `buildMemoryContext` gates stored facts and summaries on memory consent, but always includes the tail of the conversation being continued: that transcript is the live conversation, not memory, and a model switch must not amnesia the user who declined memory.
 - **Demo brain callbacks speak in the second person, or quote.** Stored memories are statements about the user; a heuristic converter rewrites them ("you tend a garden… your pride"). Subject pronouns are left alone for memories about other people (family, friends, stories) because "he is a beagle" is about the dog. When the result does not start with "you/your", the brain quotes the note rather than mangling it.

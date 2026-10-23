@@ -50,10 +50,11 @@ production.
 |---|---|
 | `memory` | Storing personal facts, interests, stories, preferences between chats |
 | `sensitive_memory` | Storing health, finances, grief, family conflict |
-| `web_search` | Sending a query to web search |
+| `web_search` | Sending the model's query (never memories) to web search. **On by default** (opt-out in Settings) |
 | `transcripts` | Keeping full transcripts (otherwise summaries only) — reserved |
 
-Consent is recorded as an append-only `consent_records` row with its source
+Memory scopes are opt-in; web search is opt-out because nothing private leaves the app
+through it. Consent is recorded as an append-only `consent_records` row with its source
 (`ui`, `voice` with the user's quoted words, or `seed` for demo profiles) and
 mirrored into `preferences` for fast checks. Revoking memory consent stops
 injection immediately; existing memories remain visible and deletable.
