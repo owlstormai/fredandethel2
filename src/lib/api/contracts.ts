@@ -10,11 +10,15 @@ import type {
   Conversation,
   ConversationMessage,
   InjectedContext,
+  Intent,
   Memory,
   ModelConfig,
+  PersonalityProfile,
   Preferences,
   Profile,
   SearchSource,
+  Tone,
+  ToneEvent,
   UsageSummary,
   User,
 } from "@/lib/types";
@@ -154,6 +158,10 @@ export interface EndConversationResponse {
   summary: Memory | null;
   /** Inferred candidates awaiting user confirmation (never injected). */
   suggestedMemories: Memory[];
+  /** True when this conversation updated the user's (inferred, words-only) conversation-style profile. */
+  styleUpdated?: boolean;
+  /** How the conversation felt, from this conversation's tone events (inferred). Absent when there were none. */
+  feel?: { dominantTone: string; intents: string[]; line: string };
 }
 
 // ----- demo turn (server-side simulated brain, same memory store) ----------
@@ -207,6 +215,19 @@ export interface MemoryExport {
   consents: ConsentRecord[];
   memories: Memory[];
   conversations: Array<Conversation & { messages: ConversationMessage[] }>;
+  /** Inferred conversation-style profile (words only, never audio); null when none. */
+  personality: PersonalityProfile | null;
+  /** Per-turn tone/intent observations (live: reported by the model; demo: lexical). */
+  toneEvents: ToneEvent[];
+}
+
+// ----- conversation-style profile ------------------------------------------
+export interface StyleProfileResponse {
+  profile: PersonalityProfile | null;
+  /** Plain-language rows for the memory page ("Humor: you joke often…"). */
+  description: Array<{ label: string; value: string }>;
+  /** Last 20 tone observations, newest first. Cues are internal and never returned. */
+  recentTones: Array<{ tone: Tone; intensity: number; intent: Intent | null; createdAt: string }>;
 }
 
 // ----- usage / models / health ---------------------------------------------

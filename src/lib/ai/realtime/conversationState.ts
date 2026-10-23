@@ -153,6 +153,7 @@ const TOOL_LABELS: Record<string, string> = {
   request_memory_consent: "Asking permission…",
   set_preferred_name: "Noting your name…",
   set_humor_level: "Adjusting humor…",
+  observe_tone: "Listening to how you sound…",
   end_conversation: "Wrapping up…",
   ui_action: "One moment…",
 };

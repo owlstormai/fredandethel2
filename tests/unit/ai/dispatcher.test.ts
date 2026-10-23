@@ -18,10 +18,14 @@ vi.mock("@/lib/database/conversations", () => ({
 vi.mock("@/lib/ai/tools/search", () => ({
   searchWeb: vi.fn(),
 }));
+vi.mock("@/lib/memory/personalityService", () => ({
+  recordToneObservation: vi.fn(),
+}));
 
 import { dispatchTool, TOOL_OUTPUTS } from "@/lib/ai/tools/dispatcher";
 import { searchWeb } from "@/lib/ai/tools/search";
 import { appendMessage, getConversation } from "@/lib/database/conversations";
+import { recordToneObservation } from "@/lib/memory/personalityService";
 import {
   forgetMemory,
   recallMemories,
@@ -202,6 +206,37 @@ describe("dispatchTool", () => {
     const result = await call("search_web", { query: "news" });
     expect(result).toEqual({ output: "Web search is turned off for this user." });
     expect(appendMessage).not.toHaveBeenCalled();
+  });
+
+  it("observe_tone stores the observation through the consent-gated service and answers 'Noted.' with no uiAction", async () => {
+    vi.mocked(recordToneObservation).mockResolvedValue({
+      id: "t1", userId: user.id, conversationId, messageId: null, tone: "joy", intensity: 0.7, intent: "reminiscing", cue: "laughed", source: "model", createdAt: "2026-01-01T00:00:00Z",
+    });
+    const result = await call("observe_tone", { tone: "joy", intensity: 0.7, intent: "reminiscing", cue: "laughed while telling the story", serious: false });
+    expect(result).toEqual({ output: TOOL_OUTPUTS.toneNoted });
+    expect(recordToneObservation).toHaveBeenCalledWith(user.id, {
+      conversationId,
+      tone: "joy",
+      intensity: 0.7,
+      intent: "reminiscing",
+      cue: "laughed while telling the story",
+      source: "model",
+    });
+  });
+
+  it("observe_tone still answers behaviourally when memory is off (service stores nothing and returns null)", async () => {
+    vi.mocked(recordToneObservation).mockResolvedValue(null);
+    const upset = await call("observe_tone", { tone: "upset", intensity: 0.8, serious: false });
+    expect(upset).toEqual({ output: TOOL_OUTPUTS.toneSerious });
+    expect(recordToneObservation).toHaveBeenCalledTimes(1);
+    // Explicit `serious` escalates regardless of tone; mild distress does not.
+    expect(await call("observe_tone", { tone: "neutral", intensity: 0.2, serious: true })).toEqual({ output: TOOL_OUTPUTS.toneSerious });
+    expect(await call("observe_tone", { tone: "frustration", intensity: 0.4, serious: false })).toEqual({ output: TOOL_OUTPUTS.toneNoted });
+    expect(await call("observe_tone", { tone: "frustration", intensity: 0.6, serious: false })).toEqual({ output: TOOL_OUTPUTS.toneSerious });
+    // It never touches the saved humor preference.
+    expect(setHumorLevel).not.toHaveBeenCalled();
+    // Bad arguments are explained, not thrown.
+    expect((await call("observe_tone", { tone: "grumpy", intensity: 2, serious: false })).output).toMatch(/^Invalid arguments for observe_tone/);
   });
 
   it("turns service failures into a graceful output for the model", async () => {

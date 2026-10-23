@@ -14,7 +14,7 @@ export async function ensurePreferences(userId: string, seed: PreferencesPatch =
   const row = await userQueryOne<PreferencesRow>(
     userId,
     `INSERT INTO preferences (user_id, humor_level, orb_color, text_scale, motion, captions, pause_sensitivity, model_key, memory_enabled, sensitive_memory_enabled, search_enabled)
-     VALUES ($1, COALESCE($2,'gentle'), COALESCE($3,'cyan'), COALESCE($4,'large'), COALESCE($5,'system'), COALESCE($6,true), COALESCE($7,'patient'), COALESCE($8,'full'), COALESCE($9,false), COALESCE($10,false), COALESCE($11,false))
+     VALUES ($1, COALESCE($2,'gentle'), COALESCE($3,'cyan'), COALESCE($4,'large'), COALESCE($5,'system'), COALESCE($6,true), COALESCE($7,'patient'), COALESCE($8,'full'), COALESCE($9,false), COALESCE($10,false), COALESCE($11,true))
      ON CONFLICT (user_id) DO UPDATE SET user_id = EXCLUDED.user_id
      RETURNING ${COLUMNS}`,
     [

@@ -15,6 +15,7 @@ import { useToast } from "@/components/ui/Toast";
 import { AddMemoryForm } from "./AddMemoryForm";
 import { MemoryItem } from "./MemoryItem";
 import { STATUS_HEADING, STATUS_ORDER } from "./memoryLabels";
+import { StyleProfileCard } from "./StyleProfileCard";
 
 type LoadState = { status: "loading" } | { status: "ready"; data: MemoriesResponse } | { status: "error"; message: string };
 
@@ -132,6 +133,8 @@ export function MemoryPage() {
           </Link>
         </div>
       ) : null}
+
+      <StyleProfileCard />
 
       <AddMemoryForm onAdd={handleAdd} disabled={load.status === "error"} />
 

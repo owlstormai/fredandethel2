@@ -19,6 +19,7 @@ import {
   setSummaryMemoryId,
 } from "@/lib/database/conversations";
 import { getMemory } from "@/lib/database/memories";
+import { describeConversationFeel, updatePersonalityFromConversation } from "@/lib/memory/personalityService";
 import { isMemoryEnabled, isSensitiveMemoryEnabled, getProfile } from "@/lib/memory/service";
 import { heuristicSummary, storeCandidateMemory, storeSummaryMemory } from "@/lib/memory/summaries";
 import { listTombstoneKeywords } from "@/lib/memory/tombstones";
@@ -147,13 +148,17 @@ export async function recordConversationEvents(
  * omit those details and the heuristic drops sensitive statements. Summarizer
  * candidates keep their own labels (reported / inferred); inferred ones are
  * returned as suggestions and never injected.
+ * After the summary, the user's conversation-style profile is updated from
+ * their words (heuristic always; the paid model only for a live conversation
+ * with memory on) and the conversation's tone events are condensed into a
+ * one-line "how it felt". Both are inferred, consent-gated and never block the end.
  * Idempotent: ending an ended conversation returns its stored summary.
  */
 export async function finishConversation(userId: string, conversationId: string): Promise<EndConversationResponse> {
   const existing = await requireOwnedConversation(userId, conversationId);
   if (existing.status !== "active") {
     const summary = existing.summaryMemoryId ? await getMemory(userId, existing.summaryMemoryId) : null;
-    return { conversation: existing, summary, suggestedMemories: [] };
+    return { conversation: existing, summary, suggestedMemories: [], styleUpdated: false };
   }
 
   let conversation = (await endConversation(userId, conversationId, "ended")) ?? existing;
@@ -201,5 +206,22 @@ export async function finishConversation(userId: string, conversationId: string)
       if (stored && stored.status === "inferred") suggestedMemories.push(stored);
     }
   }
-  return { conversation, summary, suggestedMemories };
+
+  // Conversation-style profile (inferred from words, never audio) and "how it felt".
+  let styleUpdated = false;
+  let feel: EndConversationResponse["feel"];
+  if (memoryOn) {
+    try {
+      const profile = await updatePersonalityFromConversation(userId, conversationId, messages, { useModel: existing.mode === "live" });
+      styleUpdated = profile !== null;
+    } catch (error) {
+      logError("style_update_failed", error);
+    }
+    try {
+      feel = (await describeConversationFeel(userId, conversationId)) ?? undefined;
+    } catch (error) {
+      logError("feel_failed", error);
+    }
+  }
+  return { conversation, summary, suggestedMemories, styleUpdated, ...(feel ? { feel } : {}) };
 }

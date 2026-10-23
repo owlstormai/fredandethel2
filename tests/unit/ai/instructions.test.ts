@@ -144,7 +144,8 @@ describe("buildInstructions", () => {
     expect(buildInstructions(base)).toContain("Mode: live.");
   });
 
-  it("stays under the ~1,800 token budget without the memory block for every combination", () => {
+  // Budget raised from 1,800 to 1,900 tokens for the "Three-channel listening" section (2026-10-23).
+  it("stays under the ~1,900 token budget without the memory block for every combination", () => {
     let worst = 0;
     for (const humorLevel of ["off", "gentle", "playful"] as HumorLevel[]) {
       for (const onboardingStage of ["new", "named", "interests", "memory_decided", "complete"] as OnboardingStage[]) {
@@ -164,8 +165,44 @@ describe("buildInstructions", () => {
         }
       }
     }
-    expect(worst).toBeLessThanOrEqual(1800);
+    expect(worst).toBeLessThanOrEqual(1900);
     expect(worst).toBeGreaterThan(800); // sanity: the prompt is substantive
+  });
+
+  it("renders the inferred style section only when memory is on and a block is given, before memory honesty", () => {
+    const block = "How they like to talk (inferred from their words, not their voice): They joke back readily (wordplay, dry); match it when humor is on.";
+    const on = buildInstructions({ ...base, memoryEnabled: true, memoryBlock: "x", styleBlock: block });
+    expect(on).toContain("# How they like to talk\n" + block);
+    expect(on).toContain("Adapt to their style the way a good friend would; never mimic them mockingly; if they turn serious, so do you.");
+    expect(on.indexOf("# How they like to talk")).toBeGreaterThan(on.indexOf("# Humor:"));
+    expect(on.indexOf("# How they like to talk")).toBeLessThan(on.indexOf("# Memory honesty"));
+
+    expect(buildInstructions({ ...base, memoryEnabled: true, memoryBlock: "x" })).not.toContain("# How they like to talk");
+    expect(buildInstructions({ ...base, memoryEnabled: true, memoryBlock: "x", styleBlock: "   " })).not.toContain("# How they like to talk");
+    // The profile is memory-covered data: never rendered when memory is off.
+    const off = buildInstructions({ ...base, memoryEnabled: false, styleBlock: block });
+    expect(off).not.toContain("# How they like to talk");
+    expect(off).not.toContain("joke back readily");
+    // Budget helper excludes it.
+    expect(buildInstructionsWithoutMemory({ ...base, memoryEnabled: true, styleBlock: block })).not.toContain("joke back readily");
+  });
+
+  it("always teaches three-channel listening (what / how / why) with the observe_tone tool, before the humor section", () => {
+    const text = buildInstructions(base);
+    expect(text).toContain("# Three-channel listening");
+    expect(text).toMatch(/WHAT they say/);
+    expect(text).toMatch(/HOW they say it \(tone/);
+    expect(text).toMatch(/you can hear pace, hesitation, laughter, strain, flatness/);
+    expect(text).toMatch(/WHY \(intent/);
+    expect(text).toContain("Call observe_tone when tone or intent is notable or changes");
+    expect(text).toContain("Frustration: fewer questions, acknowledge it, slow down.");
+    expect(text).toContain("Sadness or upset: warmth, no humor, one gentle question.");
+    expect(text).toContain("Confusion: shorter sentences, repeat the key point.");
+    expect(text).toContain("Fatigue: offer to wrap up.");
+    expect(text).toContain("Venting: listen, do not fix.");
+    expect(text).toContain("Reminiscing: let the story run.");
+    expect(text.indexOf("# Three-channel listening")).toBeLessThan(text.indexOf("# Humor:"));
+    expect(text).toContain("- observe_tone:");
   });
 
   it("estimateTokens is chars/4 rounded up", () => {

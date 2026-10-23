@@ -75,6 +75,7 @@ and the developer panel.
 | UI, orb, settings, memory inspector, developer panel | Working, verified in Chromium (screenshots in `docs/screenshots/`) |
 | Demo mode conversation, onboarding, memory consent/recall/forget, humor level, serious-topic handling, gentle disagreement | Working; **rule-based and labeled Simulated** |
 | Memory store, provenance labels, tombstones, summary suppression, export, delete account, per-user isolation | Working, integration-tested against Postgres |
+| Conversation-style profile ("How you like to talk": humor, pace, stories, topics…) and three-channel listening (what / how / why) | Working, integration-tested; **inferred from the words of transcripts, never from audio**, labelled *Inferred*, covered by memory consent, viewable and resettable on the memory page. Live mode lets the model report what it hears via the `observe_tone` tool; demo mode infers tone from text and says so |
 | Live mode: ephemeral key minting, WebRTC client, barge-in, semantic VAD config, tools, usage/cost | Built to the verified API docs and unit-tested with scripted events; **not yet exercised against the real API** (no key in the build environment) |
 | Web search (Responses `web_search`), AI summaries | Same as above; degrade gracefully without a key |
 | Hosting | No public URL from the build container; Vercel + Supabase path documented in `PREVIEW.md`, not deployed |

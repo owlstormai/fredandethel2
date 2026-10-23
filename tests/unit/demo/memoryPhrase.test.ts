@@ -37,3 +37,15 @@ describe("memoryToSecondPerson", () => {
     expect(memoryToSecondPerson("", "Walter")).toBeNull();
   });
 });
+
+describe("maybeQuip never repeats within a conversation", () => {
+  it("skips quips already used and runs dry rather than repeating", async () => {
+    const { maybeQuip } = await import("@/lib/ai/adapters/demoBrain");
+    const first = maybeQuip("my garden and tomatoes", "playful", 3);
+    expect(first).not.toBe("");
+    const second = maybeQuip("my garden and tomatoes", "playful", 3, [first]);
+    expect(second).not.toBe(first);
+    const third = maybeQuip("my garden and tomatoes", "playful", 3, [first, second].filter(Boolean));
+    expect(third === "" || (third !== first && third !== second)).toBe(true);
+  });
+});

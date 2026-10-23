@@ -61,6 +61,12 @@ export function SessionSummary({ summary, connectedSeconds, simulated, onTalkAga
         </div>
       </dl>
 
+      {summary?.feel ? (
+        <p className="mb-5 text-[1rem] text-muted" data-testid="summary-feel">
+          <span className="font-semibold text-foreground">How it felt (inferred{simulated ? " from your words" : ""}):</span> {summary.feel.line}
+        </p>
+      ) : null}
+
       <h3 className="mb-2 text-[1.15rem] font-semibold text-foreground">What I&apos;ll remember</h3>
       {summary?.summary ? (
         <p className="mb-4 rounded-[var(--radius-md)] bg-surface-2 p-3 text-[1.0625rem] leading-relaxed text-foreground" data-testid="summary-text">

@@ -349,3 +349,75 @@ export type OrbState =
   | "muted"
   | "error"
   | "offline"; // not connected
+
+// ---------------------------------------------------------------------------
+// Conversation-style profile and three-channel listening (additive)
+//
+// A picture of HOW the user likes to talk, built application-side and labeled
+// INFERRED. The Realtime API hands the app transcripts, not prosody, so every
+// trait here is inferred from the user's WORDS (laughter markers, exclamation
+// density, question rate, sentence length, warmth and humor vocabulary, story
+// cues) — never from audio. Tone events come from the live model's own ears
+// (observe_tone tool) or, in demo mode, from the same lexical cues.
+// ---------------------------------------------------------------------------
+
+export type StyleTrait = "humor" | "energy" | "formality" | "verbosity" | "warmth" | "curiosity" | "storytelling" | "directness";
+
+export type HumorStyle = "wordplay" | "dry" | "self-deprecating" | "playful" | "observational" | "none";
+
+/** HOW something was said (channel 2). "neutral" is the absence of a notable tone. */
+export type Tone = "humor" | "warmth" | "frustration" | "upset" | "anxiety" | "confusion" | "fatigue" | "joy" | "neutral";
+
+/** WHY something was said (channel 3). */
+export type Intent =
+  | "venting"
+  | "seeking_information"
+  | "wanting_company"
+  | "reminiscing"
+  | "asking_for_help"
+  | "seeking_reassurance"
+  | "joking"
+  | "planning"
+  | "small_talk";
+
+export interface StyleProfileTraits {
+  /** 0..1 per trait. */
+  scores: Record<StyleTrait, number>;
+  humorStyle: HumorStyle[];
+  /** Favourite topics, at most 8, most recent first. */
+  topics: string[];
+  /** Signature expressions (repeated 2–3-grams), at most 6. */
+  phrases: string[];
+  pace: "unhurried" | "steady" | "brisk";
+  /** Short observations, at most 5, replaced by the newest analysis. */
+  notes: string[];
+  /** Normalised frequency (0..1, sums to ~1) of tones over recent tone events. Optional for older rows. */
+  tones?: Partial<Record<Tone, number>>;
+  /** Normalised frequency of intents over recent tone events. Optional for older rows. */
+  intents?: Partial<Record<Intent, number>>;
+}
+
+export interface PersonalityProfile {
+  userId: string;
+  traits: StyleProfileTraits;
+  summary: string | null;
+  evidenceConversations: number;
+  evidenceMessages: number;
+  source: "heuristic" | "model" | "mixed";
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ToneEvent {
+  id: string;
+  userId: string;
+  conversationId: string | null;
+  messageId: string | null;
+  tone: Tone;
+  intensity: number;
+  intent: Intent | null;
+  /** Short quote or matched cue (≤200 chars). Internal evidence; not shown in the UI. */
+  cue: string | null;
+  source: "model" | "heuristic";
+  createdAt: string;
+}

@@ -10,6 +10,8 @@ import type { User } from "@/lib/types";
 
 const TABLES = [
   "usage_events",
+  "tone_events",
+  "personality_profiles",
   "memory_events",
   "memory_tombstones",
   "memories",

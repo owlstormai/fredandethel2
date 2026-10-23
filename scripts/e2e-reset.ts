@@ -16,8 +16,8 @@ async function main() {
   }
   await runMigrations();
   await getPool().query(`
-    TRUNCATE TABLE usage_events, memory_events, memory_tombstones, memories, conversation_messages,
-      conversations, consent_records, preferences, profiles, users RESTART IDENTITY CASCADE
+    TRUNCATE TABLE usage_events, tone_events, personality_profiles, memory_events, memory_tombstones, memories,
+      conversation_messages, conversations, consent_records, preferences, profiles, users RESTART IDENTITY CASCADE
   `);
   await seedAll();
   await closePool();

@@ -200,7 +200,9 @@ describe("humor", () => {
     expect(serious.reply).toMatch(/I'm so sorry/);
     expect(serious.reply).toMatch(/friend|family/);
     expect(serious.reply).toMatch(/\?/);
-    expect(serious.toolCalls).toEqual([]);
+    // Channel 2 (from the words): the loss is noticed and shows in the transcript as observe_tone; no other tool runs.
+    expect(serious.toolCalls.map((t) => t.name)).toEqual(["observe_tone"]);
+    expect(serious.toolCalls[0].arguments).toMatchObject({ tone: "upset", serious: true });
     expect(demoState((await getConversation(user.id, conversationId))!.metadata).serious).toBe(true);
 
     const later = await runDemoTurn(user.id, conversationId, light);

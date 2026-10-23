@@ -23,6 +23,7 @@ import { realtimeSessionRequestSchema, type RealtimeSessionResponse } from "@/li
 import { HttpError, jsonOk, parseBody, withErrorHandling } from "@/lib/api/respond";
 import { requireApiUser } from "@/lib/auth/session";
 import { createConversation, getConversation } from "@/lib/database/conversations";
+import { buildStyleBlock } from "@/lib/memory/personalityService";
 import { buildMemoryContext, getPreferences, getProfile, hasConsent } from "@/lib/memory/service";
 import { logInfo, logWarn } from "@/lib/privacy/logging";
 import { enforceRateLimit } from "@/lib/privacy/rateLimit";
@@ -69,6 +70,8 @@ export const POST = withErrorHandling(async (request: Request) => {
     maxTokens: MEMORY_CONTEXT_MAX_TOKENS,
     continueConversationId: body.continueConversationId,
   });
+  // Inferred conversation-style profile (from words, never audio); covered by memory consent.
+  const styleBlock = preferences.memoryEnabled ? await buildStyleBlock(user.id) : "";
 
   const voice = COMPANION_VOICES[profile.companionVoice];
   const instructions = buildInstructions({
@@ -80,6 +83,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     sensitiveMemoryEnabled: preferences.sensitiveMemoryEnabled,
     searchEnabled,
     memoryBlock: memory.block, // service applies consent gating; transcript continuation is always included
+    styleBlock,
     mode: "live",
     now: new Date(),
     timezone: profile.timezone,
@@ -109,6 +113,7 @@ export const POST = withErrorHandling(async (request: Request) => {
       injectedSummaryIds: memory.summaryIds,
       estimatedTokens: memory.estimatedTokens,
       instructionsTokens: estimateTokens(instructions),
+      styleTokens: estimateTokens(styleBlock),
       voice: voice.openaiVoice,
       companionVoice: profile.companionVoice,
       humorLevel: preferences.humorLevel,

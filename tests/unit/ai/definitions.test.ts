@@ -74,6 +74,12 @@ describe("companionToolDefinitions", () => {
     expect(toolArgumentSchemas.search_web.safeParse({ query: "a".repeat(301) }).success).toBe(false);
     expect(toolArgumentSchemas.end_conversation.safeParse({}).success).toBe(true);
     expect(toolArgumentSchemas.end_conversation.safeParse({ bogus: 1 }).success).toBe(false);
+    expect(toolArgumentSchemas.observe_tone.safeParse({ tone: "frustration", intensity: 0.7, intent: "venting", cue: "sighed, 'nothing works'", serious: false }).success).toBe(true);
+    expect(toolArgumentSchemas.observe_tone.safeParse({ tone: "frustration", intensity: 0.7, serious: true }).success).toBe(true);
+    expect(toolArgumentSchemas.observe_tone.safeParse({ tone: "grumpy", intensity: 0.7, serious: false }).success).toBe(false);
+    expect(toolArgumentSchemas.observe_tone.safeParse({ tone: "joy", intensity: 1.5, serious: false }).success).toBe(false);
+    expect(toolArgumentSchemas.observe_tone.safeParse({ tone: "joy", intensity: 0.5 }).success).toBe(false);
+    expect(toolArgumentSchemas.observe_tone.safeParse({ tone: "joy", intensity: 0.5, serious: false, cue: "x".repeat(201) }).success).toBe(false);
   });
 
   it("isToolName narrows correctly", () => {

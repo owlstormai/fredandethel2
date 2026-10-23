@@ -37,7 +37,7 @@ npm run dev                            # http://localhost:3000
 container's local Postgres instead of Docker) produced a working app on
 http://127.0.0.1:3100 (`next build` + `next start`), the health endpoint returned
 `{"ok":true,"db":"ok","liveConfigured":false}`, and the Playwright suite drove the demo
-end to end with a fake microphone: 17 passed, 2 skipped (live). Full table in
+end to end with a fake microphone: 18 passed, 2 skipped (live). Full table in
 `docs/TEST_PLAN.md` → "Latest results". Screenshots in `docs/screenshots/`.
 
 ## Smallest external deployment path (Vercel + Supabase)

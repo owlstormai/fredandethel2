@@ -8,15 +8,26 @@
  * preferences), never pandering, honest about what it does and does not
  * remember. Serious topics drop humor for the rest of the conversation.
  * Template choice is a hash of the input so tests are stable.
+ *
+ * Three-channel listening in demo mode is TEXT ONLY and says so: every user
+ * turn is run through `classifyTone` (lexical cues such as "ugh", "haha",
+ * "worried", question marks — never audio). Distress drops humor and answers
+ * with warmth; confusion shortens the reply; fatigue offers to wrap up. The
+ * user's inferred conversation-style profile (words only, memory-gated) nudges
+ * quip frequency and the "long version" templates. Deterministic throughout.
  */
 import type { DemoTurnResponse } from "@/lib/api/contracts";
 import { HttpError } from "@/lib/api/respond";
 import { COMPANION_VOICES } from "@/lib/ai/models";
 import { appendMessage, getConversation, mergeConversationMetadata } from "@/lib/database/conversations";
+import { getPersonalityProfile } from "@/lib/database/personality";
+import { insertToneEvent } from "@/lib/database/tone";
 import { extractKeywords, hashText, normalizeText } from "@/lib/memory/normalize";
 import { inferMemoryShape } from "@/lib/memory/sensitivity";
 import * as memoryService from "@/lib/memory/service";
-import type { HumorLevel, Memory, MemoryCategory, Preferences, Profile } from "@/lib/types";
+import { classifyTone, DISTRESS_TONES, isNotableTone, NOTABLE_INTENSITY, type ToneObservation } from "@/lib/memory/tone";
+import { logWarn } from "@/lib/privacy/logging";
+import type { HumorLevel, Memory, MemoryCategory, Preferences, Profile, StyleProfileTraits } from "@/lib/types";
 
 export const GREETING_INPUT = "__greeting__";
 
@@ -241,6 +252,44 @@ const REFLECT_WITH_NAME = [
   "Tell me more about that, {N}. What was going through your mind?",
   "{N}, I'd like to hear where that goes.",
 ];
+/** For a user whose (inferred) profile says they like the long version: invite it. */
+const REFLECT_WITH_PHRASE_LONG = [
+  "{PC} — I'd like the longer version, if you're in the mood. Where does it start?",
+  "{PC}. Take your time with it — I'd rather hear the whole thing than the short version.",
+  "{PC}. Don't skip the details on my account; start wherever it starts.",
+];
+const REFLECT_PLAIN_LONG = [
+  "I'd like to hear the rest of it, at whatever pace suits you.",
+  "Tell me the long version. I've got nowhere else to be.",
+  "Go on — from the beginning, if you like. I'm listening.",
+];
+/** Profile thresholds (scores are 0..1, inferred from words). */
+export const STYLE_HUMOR_THRESHOLD = 0.6;
+export const STYLE_VERBOSITY_THRESHOLD = 0.6;
+
+/** Channel-2 replies (tone inferred from the words, never audio). One gentle question each. */
+const TONE_REPLIES: Record<"frustration" | "upset" | "anxiety", string[]> = {
+  frustration: [
+    "That does sound frustrating. Let's slow right down — no rush at all. What's the part that's giving you the most trouble?",
+    "I'd be fed up too. Take a breath; we'll take it one step at a time. Which bit is being stubborn?",
+  ],
+  upset: [
+    "I'm sorry — that sounds hard. I'm here, and there's no need to hurry. Would you like to tell me more about it?",
+    "That's a heavy thing to carry. I'm listening, for as long as you like. What's on your mind most?",
+  ],
+  anxiety: [
+    "That sounds worrying, and it makes sense that it's on your mind. Take your time. What's weighing on you most right now?",
+    "It's alright to be nervous about it. We can go slowly. What's the part you keep coming back to?",
+  ],
+};
+const FATIGUE_REPLIES = [
+  "You sound tired. We can stop here and pick it up another time, or carry on gently — whichever you'd prefer.",
+  "It sounds like it's been a long one. Shall we wrap up for now, or would a quiet few minutes more suit you?",
+];
+const CONFUSION_REPLIES = [
+  "Sorry — let me put that more simply. Tell me which part lost you, and I'll take it one step at a time.",
+  "My fault for rushing. Which bit should I say again, more plainly?",
+];
 
 const TOPIC_QUIPS: Array<{ keys: string[]; quips: string[] }> = [
   { keys: ["garden", "tomato", "weed", "flower", "plant", "seed", "rose"], quips: ["I'd help with the weeding, but I have a strict no-dirt policy, on account of having no hands.", "A garden is the one place where 'things are growing out of control' counts as good news."] },
@@ -262,18 +311,24 @@ const GENERIC_QUIPS = [
   "Between us, I'm very good company. I've checked my reviews.",
 ];
 
-/** A quip for the turn, or "" — frequency depends on humor level; never when serious. */
-export function maybeQuip(text: string, humor: HumorLevel, hash: number): string {
+/** Pick from the quips not yet used in this conversation; "" when they are all spent. */
+function pickUnused(list: readonly string[], hash: number, salt: number, used: readonly string[]): string {
+  const fresh = list.filter((q) => !used.includes(q));
+  return fresh.length ? pick(fresh, hash, salt) : "";
+}
+
+/** A quip for the turn, or "" — frequency depends on humor level; never when serious; never repeated. */
+export function maybeQuip(text: string, humor: HumorLevel, hash: number, used: readonly string[] = []): string {
   if (humor === "off") return "";
   const keywords = extractKeywords(text);
   const topic = TOPIC_QUIPS.find((t) => t.keys.some((k) => keywords.some((kw) => kw.startsWith(k) || k.startsWith(kw))));
   if (humor === "gentle") {
     if (!topic || hash % 3 !== 0) return "";
-    return pick(topic.quips, hash, 1);
+    return pickUnused(topic.quips, hash, 1, used);
   }
   // playful
   if (hash % 3 === 2) return "";
-  return topic ? pick(topic.quips, hash, 1) : pick(GENERIC_QUIPS, hash, 2);
+  return topic ? pickUnused(topic.quips, hash, 1, used) : pickUnused(GENERIC_QUIPS, hash, 2, used);
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +342,8 @@ export interface DemoState {
   serious?: boolean;
   unclear?: number;
   turns?: number;
+  /** Quips already used in this conversation — never repeat one. */
+  usedQuips?: string[];
 }
 
 type ToolCall = DemoTurnResponse["toolCalls"][number];
@@ -303,8 +360,22 @@ interface Turn {
   companion: string;
   name: string | null;
   humor: HumorLevel;
+  /** Inferred conversation-style profile (words only); null without memory consent or evidence. */
+  style: StyleProfileTraits | null;
+  /** Lexical tone/intent of this turn (demo: text only); null for the greeting. */
+  tone: ToneObservation | null;
   toolCalls: ToolCall[];
   uiActions: Array<Record<string, unknown>>;
+}
+
+/** Gentle humor steps up to playful's quip rate for a user whose profile says they joke back readily. */
+function effectiveHumor(turn: Turn): HumorLevel {
+  if (turn.humor === "gentle" && (turn.style?.scores.humor ?? 0) >= STYLE_HUMOR_THRESHOLD) return "playful";
+  return turn.humor;
+}
+
+function prefersLongVersion(turn: Turn): boolean {
+  return (turn.style?.scores.verbosity ?? 0) >= STYLE_VERBOSITY_THRESHOLD;
 }
 
 async function tool<T>(turn: Turn, name: string, args: Record<string, unknown>, run: () => Promise<T>): Promise<T> {
@@ -321,7 +392,15 @@ async function tool<T>(turn: Turn, name: string, args: Record<string, unknown>, 
 
 function readState(metadata: Record<string, unknown>): DemoState {
   const raw = (metadata.demo ?? {}) as Partial<DemoState>;
-  return { awaiting: raw.awaiting ?? null, pendingInterest: raw.pendingInterest ?? null, pendingRemember: raw.pendingRemember ?? null, serious: raw.serious ?? false, unclear: raw.unclear ?? 0, turns: raw.turns ?? 0 };
+  return {
+    awaiting: raw.awaiting ?? null,
+    pendingInterest: raw.pendingInterest ?? null,
+    pendingRemember: raw.pendingRemember ?? null,
+    serious: raw.serious ?? false,
+    unclear: raw.unclear ?? 0,
+    turns: raw.turns ?? 0,
+    usedQuips: Array.isArray(raw.usedQuips) ? raw.usedQuips.filter((q): q is string => typeof q === "string").slice(-30) : [],
+  };
 }
 
 function withName(turn: Turn, text: string, prefix = ", "): string {
@@ -507,8 +586,11 @@ async function greet(turn: Turn): Promise<{ reply: string; next: DemoState }> {
   } else {
     reply += " What's on your mind today?";
   }
-  const quip = maybeQuip(reply, turn.humor === "playful" ? "playful" : "off", hash);
-  if (quip) reply += ` ${quip}`;
+  const quip = maybeQuip(reply, turn.humor === "playful" ? "playful" : "off", hash, turn.state.usedQuips);
+  if (quip) {
+    reply += ` ${quip}`;
+    next.usedQuips = [...(turn.state.usedQuips ?? []), quip];
+  }
   return { reply, next };
 }
 
@@ -671,6 +753,8 @@ export async function runDemoTurn(userId: string, conversationId: string, rawTex
     memoryService.getPreferences(userId),
     memoryService.isMemoryEnabled(userId),
   ]);
+  // The style profile is memory-covered data: only read it when memory is on.
+  const style = memoryOn ? ((await getPersonalityProfile(userId))?.traits ?? null) : null;
   const state = readState(conversation.metadata);
   const turn: Turn = {
     userId,
@@ -684,14 +768,44 @@ export async function runDemoTurn(userId: string, conversationId: string, rawTex
     companion: COMPANION_VOICES[profile.companionVoice].label,
     name: profile.preferredName,
     humor: state.serious ? "off" : prefs.humorLevel,
+    style,
+    tone: null,
     toolCalls: [],
     uiActions: [],
   };
 
   const isGreeting = text === GREETING_INPUT || text === "";
-  if (!isGreeting) await appendMessage({ userId, conversationId, role: "user", content: text });
+  if (!isGreeting) {
+    const message = await appendMessage({ userId, conversationId, role: "user", content: text });
+    // Channels 2 and 3 from the words alone (demo mode has no audio to listen to).
+    turn.tone = classifyTone(text);
+    if (memoryOn) {
+      try {
+        await insertToneEvent(userId, {
+          conversationId,
+          messageId: message.id,
+          tone: turn.tone.tone,
+          intensity: turn.tone.intensity,
+          intent: turn.tone.intent,
+          cue: turn.tone.cue,
+          source: "heuristic",
+        });
+      } catch (error) {
+        logWarn("tone_event_not_stored", { error: (error as Error).message });
+      }
+    }
+  }
 
   const { reply, next } = isGreeting ? await greet(turn) : await respond(turn);
+
+  // A notable tone shows up in the transcript the way the live model's observe_tone call would.
+  if (turn.tone && isNotableTone(turn.tone)) {
+    turn.toolCalls.push({
+      name: "observe_tone",
+      arguments: { tone: turn.tone.tone, intensity: turn.tone.intensity, intent: turn.tone.intent, serious: DISTRESS_TONES.has(turn.tone.tone) },
+      output: JSON.stringify({ ok: true, stored: memoryOn, source: "heuristic" }),
+    });
+  }
 
   for (const call of turn.toolCalls) {
     await appendMessage({ userId, conversationId, role: "tool", content: call.output, toolName: call.name, toolPayload: { arguments: call.arguments, output: call.output } });
@@ -716,6 +830,14 @@ async function respond(turn: Turn): Promise<{ reply: string; next: DemoState }> 
   if (serious) {
     turn.humor = "off";
     return { reply: seriousReply(turn, serious), next: { ...base, serious: true, awaiting: null } };
+  }
+  // 1b. Channel 2 (tone, from the words): clear distress takes the serious path —
+  //     humor off for the rest of the conversation, warmth first. Commands still run.
+  const tone = turn.tone;
+  const distressed = tone !== null && DISTRESS_TONES.has(tone.tone) && tone.intensity >= NOTABLE_INTENSITY;
+  if (distressed) {
+    turn.humor = "off";
+    base.serious = true;
   }
 
   // 2. Onboarding (new profile) — a name question is pending even if the user typed first.
@@ -837,6 +959,18 @@ async function respond(turn: Turn): Promise<{ reply: string; next: DemoState }> 
     return { reply: withName(turn, "It was good talking with you") + ". I'll be here whenever you want to pick it up again. Take care.", next };
   }
 
+  // 3b. Tone-driven replies (inferred from words). Distress: acknowledge, slow down,
+  //     one gentle question. Fatigue: offer to wrap up. Confusion: shorter and plainer.
+  if (distressed && tone && (tone.tone === "frustration" || tone.tone === "upset" || tone.tone === "anxiety")) {
+    return { reply: pick(TONE_REPLIES[tone.tone], turn.hash), next };
+  }
+  if (tone?.tone === "fatigue" && tone.intensity >= NOTABLE_INTENSITY) {
+    return { reply: pick(FATIGUE_REPLIES, turn.hash), next };
+  }
+  if (tone?.tone === "confusion" && tone.intensity >= NOTABLE_INTENSITY) {
+    return { reply: pick(CONFUSION_REPLIES, turn.hash), next };
+  }
+
   // 4. Gentle disagreement with common falsehoods.
   const falsehood = detectFalsehood(text);
   if (falsehood) {
@@ -846,13 +980,16 @@ async function respond(turn: Turn): Promise<{ reply: string; next: DemoState }> 
   // 5. Small talk.
   if (THANKS_RE.test(text)) return { reply: `${pick(["You're very welcome.", "Any time.", "My pleasure."], turn.hash)} What else is on your mind?`, next };
   if (HOW_ARE_YOU_RE.test(text)) {
-    const quip = maybeQuip("how are you", turn.humor, turn.hash);
+    const quip = maybeQuip("how are you", effectiveHumor(turn), turn.hash, turn.state.usedQuips);
+    if (quip) next.usedQuips = [...(turn.state.usedQuips ?? []), quip];
     return { reply: `I'm well, thank you${quip ? ` — ${lowerFirst(quip)}` : ""}. More to the point, how are you doing today?`, next };
   }
   if (HELLO_RE.test(text)) return { reply: `${withName(turn, "Hello")}! Good to hear from you. What's on your mind today?`, next };
 
   // 6. Reflective reply, with a memory callback when a saved memory is relevant.
-  return { reply: await reflect(turn), next };
+  const reflected = await reflect(turn);
+  if (reflected.quip) next.usedQuips = [...(turn.state.usedQuips ?? []), reflected.quip];
+  return { reply: reflected.reply, next };
 }
 
 function joinList(items: string[]): string {
@@ -861,7 +998,7 @@ function joinList(items: string[]): string {
   return `${items.slice(0, -1).join("; ")}; and ${items[items.length - 1]}`;
 }
 
-async function reflect(turn: Turn): Promise<string> {
+async function reflect(turn: Turn): Promise<{ reply: string; quip: string }> {
   const { text, hash } = turn;
   const parts: string[] = [];
 
@@ -872,16 +1009,17 @@ async function reflect(turn: Turn): Promise<string> {
     }
   }
 
+  const longVersion = prefersLongVersion(turn);
   const phrase = echoPhrase(text);
   if (phrase) {
     const useName = turn.name && hash % 4 === 0;
-    const template = useName ? pick(REFLECT_WITH_NAME, hash) : pick(REFLECT_WITH_PHRASE, hash);
+    const template = useName ? pick(REFLECT_WITH_NAME, hash) : pick(longVersion ? REFLECT_WITH_PHRASE_LONG : REFLECT_WITH_PHRASE, hash);
     parts.push(template.replace("{P}", phrase).replace("{PC}", capitalize(phrase)).replace("{N}", turn.name ?? ""));
   } else {
-    parts.push(pick(REFLECT_PLAIN, hash));
+    parts.push(pick(longVersion ? REFLECT_PLAIN_LONG : REFLECT_PLAIN, hash));
   }
 
-  const quip = maybeQuip(text, turn.humor, hash);
+  const quip = maybeQuip(text, effectiveHumor(turn), hash, turn.state.usedQuips);
   if (quip) parts.splice(parts.length - 1, 0, quip);
-  return parts.join(" ");
+  return { reply: parts.join(" "), quip };
 }

@@ -59,6 +59,27 @@ through it. Consent is recorded as an append-only `consent_records` row with its
 mirrored into `preferences` for fast checks. Revoking memory consent stops
 injection immediately; existing memories remain visible and deletable.
 
+### Style profile
+
+The conversation-style profile (`personality_profiles`) and the per-turn tone
+observations (`tone_events`) are **covered by the `memory` consent scope**; no new
+scope was added. They are inferred — from the words of transcripts, never from
+audio — and are labelled as such wherever they appear.
+
+| Data | Written when | Read when | Removed by |
+|---|---|---|---|
+| `personality_profiles` (trait scores, humor styles, topics, expressions, pace, notes, tone/intent frequencies, optional model summary) | A conversation ends with memory on and ≥ 3 user messages | Live session minting (prompt block, memory on only); demo brain (memory on only); `GET /api/profile/style`; export | `DELETE /api/profile/style` ("Reset this" on the memory page); account deletion (FK cascade) |
+| `tone_events` (tone, intensity, intent, ≤200-char cue, source `model` / `heuristic`) | Live: the model calls `observe_tone` and memory is on. Demo: every user turn, memory on | Conversation end (profile frequencies, "how it felt"); `GET /api/profile/style` (last 20, **cues never returned**); export | Same reset; account deletion (cascade); conversation deletion (cascade) |
+
+With memory off nothing is written: the live `observe_tone` tool still answers
+with behavioural guidance for the current conversation but stores nothing, and
+the demo brain still adapts its reply without storing. The model-assisted
+analysis (live only) is instructed to describe style, not facts, and to omit
+health, medication, finances, grief, family conflict and protected
+characteristics; the parser additionally drops any topic, note, phrase or summary
+that the sensitivity classifier flags. The heuristic never lists a sensitive word
+as a topic. Logs record counts and durations only, never cues or transcript text.
+
 ## Provenance and the right to be forgotten
 
 - Memories are labeled `confirmed`, `reported`, `summarized` or `inferred` and the

@@ -51,10 +51,10 @@ via Playwright 1.64, no `OPENAI_API_KEY`).
 |---|---|---|
 | Typecheck | `npm run typecheck` | pass |
 | Lint | `npm run lint` | pass, 0 problems |
-| Unit + integration | `npm run test` | **333 passed / 0 failed** (42 files; integration tests run against real Postgres) |
+| Unit + integration | `npm run test` | **402 passed / 0 failed** (46 files; integration tests run against real Postgres) |
 | Production build | `npm run build` | pass (32 routes) |
 | Secrets in client bundle | `npm run check:secrets` | PASS: no secrets found in `.next/static` |
-| End-to-end, demo mode | `E2E_FAKE_AUDIO=tests/fixtures/fake-mic.wav npm run test:e2e` | **17 passed / 0 failed / 2 skipped** |
+| End-to-end, demo mode | `E2E_FAKE_AUDIO=tests/fixtures/fake-mic.wav npm run test:e2e` | **18 passed / 0 failed / 2 skipped** |
 | End-to-end, live mode | `tests/e2e/live.spec.ts` | **skipped** (requires `OPENAI_API_KEY`) |
 | Verification checklist | `npm run verify` | 10 PASS, 0 FAIL, 6 SKIP (OpenAI checks need a key) |
 
@@ -70,7 +70,7 @@ memory; export contains only the user's rows; cross-user access to memories and
 conversations returns 404 and anonymous access returns 401; settings persist across
 reload and theme attributes apply; orb `data-mic-level` rises during fake-mic speech
 bursts and falls to near zero in silence; reduced motion still renders; developer panel
-shows sessions, caps, estimates badge and the pricing version.
+shows sessions, caps, estimates badge and the pricing version; a six-turn jokey conversation with one frustrated line builds an inferred conversation-style profile (humor, frustration noticed), shown on `/memory` and removable with Reset.
 
 ### Not verified (honest gaps)
 

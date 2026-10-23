@@ -9,6 +9,7 @@
  */
 import { z } from "zod";
 import type { FunctionToolDefinition } from "@/lib/ai/realtime/events";
+import { INTENTS, TONES } from "@/lib/memory/tone";
 
 export const TOOL_NAMES = [
   "remember",
@@ -19,6 +20,7 @@ export const TOOL_NAMES = [
   "set_preferred_name",
   "set_humor_level",
   "search_web",
+  "observe_tone",
   "end_conversation",
 ] as const;
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -31,6 +33,9 @@ export const MEMORY_CATEGORIES = [
 export const SENSITIVITIES = ["normal", "sensitive"] as const;
 export const CONSENT_SCOPES = ["memory", "sensitive_memory", "web_search"] as const;
 export const HUMOR_LEVELS = ["off", "gentle", "playful"] as const;
+/** Channel 2 (how) and channel 3 (why) vocabularies; shared with the demo-mode classifier. */
+export const TONE_VALUES = TONES;
+export const INTENT_VALUES = INTENTS;
 
 // ---------------------------------------------------------------------------
 // zod schemas (server-side validation of model arguments)
@@ -74,6 +79,14 @@ export const searchWebArgsSchema = z.object({
   reason: z.string().trim().max(200).optional(),
 }).strict();
 
+export const observeToneArgsSchema = z.object({
+  tone: z.enum(TONE_VALUES),
+  intensity: z.number().min(0).max(1),
+  intent: z.enum(INTENT_VALUES).optional(),
+  cue: z.string().trim().max(200).optional(),
+  serious: z.boolean(),
+}).strict();
+
 export const endConversationArgsSchema = z.object({}).strict();
 
 export const toolArgumentSchemas = {
@@ -85,6 +98,7 @@ export const toolArgumentSchemas = {
   set_preferred_name: setPreferredNameArgsSchema,
   set_humor_level: setHumorLevelArgsSchema,
   search_web: searchWebArgsSchema,
+  observe_tone: observeToneArgsSchema,
   end_conversation: endConversationArgsSchema,
 } as const satisfies Record<ToolName, z.ZodType>;
 
@@ -229,6 +243,25 @@ const searchWebTool: FunctionToolDefinition = {
   },
 };
 
+const observeToneTool: FunctionToolDefinition = {
+  type: "function",
+  name: "observe_tone",
+  description:
+    "Note HOW the user sounds (tone) and WHY they seem to be talking (intent) when it is notable or changes — not every turn, a few times per conversation at most. You can hear the voice; report what you hear. The result tells you how to adjust. Nothing is read aloud.",
+  parameters: {
+    type: "object",
+    properties: {
+      tone: { type: "string", enum: [...TONE_VALUES], description: "What you hear: joking, warm, frustrated, upset or sad, anxious, confused, tired, joyful, or neutral." },
+      intensity: { type: "number", description: "0 to 1, how strong it is." },
+      intent: { type: "string", enum: [...INTENT_VALUES], description: "Why they seem to be saying it." },
+      cue: { type: "string", description: "A few words on what gave it away (under 200 characters), e.g. \"long sigh, 'nothing works'\"." },
+      serious: { type: "boolean", description: "True if the conversation has turned serious and humor should stop for the rest of it." },
+    },
+    required: ["tone", "intensity", "serious"],
+    additionalProperties: false,
+  },
+};
+
 const endConversationTool: FunctionToolDefinition = {
   type: "function",
   name: "end_conversation",
@@ -245,6 +278,7 @@ const ALL_TOOLS: Record<ToolName, FunctionToolDefinition> = {
   set_preferred_name: setPreferredNameTool,
   set_humor_level: setHumorLevelTool,
   search_web: searchWebTool,
+  observe_tone: observeToneTool,
   end_conversation: endConversationTool,
 };
 

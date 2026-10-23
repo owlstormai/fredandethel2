@@ -14,6 +14,7 @@ import { searchWeb } from "@/lib/ai/tools/search";
 import type { ToolDispatchResponse } from "@/lib/api/contracts";
 import { HttpError } from "@/lib/api/respond";
 import { appendMessage, getConversation } from "@/lib/database/conversations";
+import { recordToneObservation } from "@/lib/memory/personalityService";
 import {
   forgetMemory,
   recallMemories,
@@ -24,6 +25,7 @@ import {
 } from "@/lib/memory/service";
 import { logError, logInfo } from "@/lib/privacy/logging";
 import { checkRateLimit } from "@/lib/privacy/rateLimit";
+import { DISTRESS_TONES } from "@/lib/memory/tone";
 import type { User } from "@/lib/types";
 
 export interface ToolDispatchInput {
@@ -52,7 +54,12 @@ export const TOOL_OUTPUTS = {
   failed: "That tool did not work just now. Carry on without it and do not mention the error unless asked.",
   searchNotLive:
     "Web search is only available in live conversations, not in demo mode. Say so plainly and offer to talk about it anyway.",
+  toneNoted: "Noted.",
+  toneSerious: "Noted. Drop humor for the rest of this conversation and slow down.",
 } as const;
+
+/** Distress at this intensity (or an explicit `serious`) switches humor off for the conversation. */
+export const TONE_SERIOUS_INTENSITY = 0.6;
 
 function formatIssues(issues: Array<{ path: PropertyKey[]; message: string }>): string {
   return issues
@@ -132,6 +139,25 @@ async function handleSearch(userId: string, conversationId: string, args: ToolAr
   };
 }
 
+/**
+ * observe_tone: the live model heard something in the voice. The observation is
+ * stored only when memory is on (the service checks consent); the behavioural
+ * reply goes back either way. No saved preference changes — "drop humor" is for
+ * THIS conversation, in the model's own context.
+ */
+async function handleObserveTone(userId: string, conversationId: string, args: ToolArgs<"observe_tone">): Promise<Result> {
+  const serious = args.serious || (DISTRESS_TONES.has(args.tone) && args.intensity >= TONE_SERIOUS_INTENSITY);
+  await recordToneObservation(userId, {
+    conversationId,
+    tone: args.tone,
+    intensity: args.intensity,
+    intent: args.intent ?? null,
+    cue: args.cue ?? null,
+    source: "model",
+  });
+  return { output: serious ? TOOL_OUTPUTS.toneSerious : TOOL_OUTPUTS.toneNoted };
+}
+
 async function execute(user: User, conversationId: string, name: ToolName, args: unknown): Promise<Result> {
   switch (name) {
     case "remember":
@@ -156,6 +182,8 @@ async function execute(user: User, conversationId: string, name: ToolName, args:
     }
     case "search_web":
       return handleSearch(user.id, conversationId, args as ToolArgs<"search_web">);
+    case "observe_tone":
+      return handleObserveTone(user.id, conversationId, args as ToolArgs<"observe_tone">);
     case "end_conversation":
       return { output: TOOL_OUTPUTS.ending, uiAction: { type: "end_conversation" } };
   }

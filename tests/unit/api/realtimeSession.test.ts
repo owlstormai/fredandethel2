@@ -25,6 +25,7 @@ vi.mock("@/lib/memory/service", () => ({
   hasConsent: vi.fn(),
 }));
 vi.mock("@/lib/usage/tracker", () => ({ checkCaps: vi.fn(), recordUsage: vi.fn(async () => ({ estimatedCostUsd: 0 })) }));
+vi.mock("@/lib/memory/personalityService", () => ({ buildStyleBlock: vi.fn(async () => "") }));
 
 import { POST } from "@/app/api/realtime/session/route";
 import { isLiveConfigured } from "@/lib/ai/models";

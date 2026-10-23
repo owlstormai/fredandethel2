@@ -19,6 +19,12 @@ export interface BuildInstructionsInput {
   searchEnabled: boolean;
   /** Plain-text block from buildMemoryContext (may be empty). */
   memoryBlock: string;
+  /**
+   * Inferred conversation-style profile of the user (describeStyleForPrompt),
+   * built from their WORDS in past transcripts, never from audio. Rendered only
+   * when memory is enabled (it is covered by memory consent) and non-empty.
+   */
+  styleBlock?: string;
   mode: "live" | "demo";
   now: Date;
   timezone?: string | null;
@@ -118,6 +124,26 @@ function humorSection(level: HumorLevel): string {
   return [header, byLevel[level], ...always].join("\n");
 }
 
+const LISTENING_SECTION = [
+  "# Three-channel listening",
+  "Listen on three channels: WHAT they say (facts, topic), HOW they say it (tone — you can hear pace, hesitation, laughter, strain, flatness) and WHY (intent: venting, seeking information, wanting company, reminiscing, asking for help, seeking reassurance, joking, planning, small talk).",
+  "Call observe_tone when tone or intent is notable or changes — not every turn, a few times per conversation at most. Act on it at once:",
+  "- Frustration: fewer questions, acknowledge it, slow down. Sadness or upset: warmth, no humor, one gentle question.",
+  "- Joking: match it, within the humor level. Confusion: shorter sentences, repeat the key point. Fatigue: offer to wrap up.",
+  "- Venting: listen, do not fix. Seeking information: answer first, briefly. Wanting company: stay, be present. Reminiscing: let the story run.",
+].join("\n");
+
+/** How the user likes to talk (inferred from words, never audio). Empty when there is nothing to say or memory is off. */
+function styleSection(input: BuildInstructionsInput): string {
+  const block = (input.styleBlock ?? "").trim();
+  if (!input.memoryEnabled || block.length === 0) return "";
+  return [
+    "# How they like to talk",
+    block,
+    "Adapt to their style the way a good friend would; never mimic them mockingly; if they turn serious, so do you.",
+  ].join("\n");
+}
+
 function memoryHonestySection(input: BuildInstructionsInput): string {
   const lines = [
     "# Memory honesty",
@@ -185,6 +211,7 @@ function toolsSection(input: BuildInstructionsInput): string {
     '- forget: when they say "forget that" or "don\'t keep that". Confirm briefly that it is gone.',
     "- recall_memories: when they ask what you remember about something, or you need to check before building on it.",
     '- set_humor_level: "less joking" or "no jokes" means off or gentle; "more jokes" or "you can be funnier" means playful.',
+    "- observe_tone: how they sound or why they came (see Three-channel listening). Quiet; keep talking.",
   );
   if (input.searchEnabled) {
     lines.push(
@@ -226,18 +253,22 @@ export function buildInstructions(input: BuildInstructionsInput): string {
     contextSection(input),
     SPEAKING_SECTION,
     CHARACTER_SECTION,
+    LISTENING_SECTION,
     humorSection(input.humorLevel),
+    styleSection(input),
     memoryHonestySection(input),
     onboardingSection(input.onboardingStage, input.preferredName),
     toolsSection(input),
     SAFETY_SECTION,
     memorySection(input),
-  ].join("\n\n");
+  ]
+    .filter((section) => section.length > 0)
+    .join("\n\n");
 }
 
-/** Instructions without the MEMORY block, for budget checks and telemetry. */
+/** Instructions without the MEMORY block (and without the style block), for budget checks and telemetry. */
 export function buildInstructionsWithoutMemory(input: Omit<BuildInstructionsInput, "memoryBlock">): string {
-  const full = buildInstructions({ ...input, memoryBlock: "" });
+  const full = buildInstructions({ ...input, memoryBlock: "", styleBlock: "" });
   const idx = full.lastIndexOf("\n\nMEMORY");
   return idx === -1 ? full : full.slice(0, idx);
 }

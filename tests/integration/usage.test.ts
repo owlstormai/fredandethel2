@@ -29,8 +29,11 @@ beforeAll(async () => {
   await ensureSchema(); // guards against a non-test DATABASE_URL before anything is dropped
   await resetDatabase();
   const ran = await runMigrations();
-  expect(ran).toEqual(["001_init.sql", "002_usage_events_keep_on_delete.sql"]);
-  expect(await runMigrations()).toEqual([]); // idempotent on a database that already has both
+  // Every migration file runs on a fresh database, in lexical order; 001/002 are the ones this file exercises.
+  expect(ran.slice(0, 2)).toEqual(["001_init.sql", "002_usage_events_keep_on_delete.sql"]);
+  expect(ran).toEqual([...ran].sort());
+  expect(ran).toContain("004_personality_profiles.sql");
+  expect(await runMigrations()).toEqual([]); // idempotent on a database that already has them all
 });
 beforeEach(async () => {
   await truncateAll();
